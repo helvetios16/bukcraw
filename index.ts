@@ -1,93 +1,43 @@
-import puppeteer, { type Browser, type Page } from "puppeteer";
-import { delay } from "./utils/util";
+// index.ts
 
-const rose: string | null = Bun.color([255, 115, 168], "ansi-16m");
-console.log(`${rose}Bun!\x1b[0m`);
+import type { Page } from "puppeteer";
+import { BrowserClient } from "./src/core/browser-client";
+import { GoodreadsService } from "./src/services/goodreads-service";
+import type { ScrapeResult } from "./src/types";
 
-const scrape = async (): Promise<void> => {
-	console.log("Starting browser...");
+/**
+ * Main function to orchestrate the scraping process.
+ */
+async function main(): Promise<void> {
+	const rose = Bun.color([255, 115, 168], "ansi-16m");
+	console.log(`${rose}Bun Scraping con Arquitectura en Capas!\x1b[0m`);
 
-	const browser: Browser = await puppeteer.launch({
-		headless: true, // Run browser without visible window (faster, for production)
-		args: [
-			"--no-sandbox", // Disable Chrome's sandbox security feature (needed for some environments like Docker/CI)
-			"--disable-setuid-sandbox", // Another sandbox-related flag for compatibility
-			"--disable-dev-shm-usage", // Prevent shared memory issues on Linux/limited RAM systems
-			"--disable-blink-features=AutomationControlled", // Hide the fact that browser is being controlled by automation (anti-detection)
-		],
-	});
+	const browserClient = new BrowserClient();
+	let page: Page;
 
 	try {
-		console.log("Browser started!");
+		// 1. Launch the browser and get a page
+		page = await browserClient.launch();
 
-		// Create new tab/page
-		const page: Page = await browser.newPage();
+		// 2. Initialize the service with the page
+		const goodreadsService = new GoodreadsService(page);
 
-		// ===== ANTI-DETECTION TECHNIQUES =====
+		// 3. Execute the scrape and get the result
+		const result: ScrapeResult = await goodreadsService.scrape();
 
-		// Set realistic User-Agent to mimic a real Chrome browser
-		// Without this, default User-Agent reveals it's Puppeteer/automated
-		await page.setUserAgent({
-			userAgent:
-				"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-			userAgentMetadata: {
-				brands: [
-					{ brand: "Google Chrome", version: "131" },
-					{ brand: "Chromium", version: "131" },
-					{ brand: "Not_A Brand", version: "24" },
-				],
-				fullVersion: "131.0.0.0",
-				platform: "Windows",
-				platformVersion: "10.0.0",
-				architecture: "x86",
-				model: "",
-				mobile: false,
-			},
-		});
-
-		// Hide webdriver property that websites check to detect bots
-		// navigator.webdriver is normally 'true' in automated browsers
-		// This makes it 'undefined' or 'false' to appear like a real user
-		await page.evaluateOnNewDocument(() => {
-			Object.defineProperty(navigator, "webdriver", { get: () => false });
-		});
-
-		// ===== NAVIGATE TO WEBSITE =====
-
-		console.log("Navigating to Goodreads...");
-
-		await page.goto("https://www.goodreads.com", {
-			// Wait until DOM is loaded (fast option)
-			// Other options: 'load', 'networkidle0', 'networkidle2'
-			waitUntil: "domcontentloaded",
-		});
-
-		// ===== EXTRACT DATA =====
-
-		// Wait 2 seconds to let JavaScript finish executing
-		// Important because some content loads after DOM is ready
-		await delay(2000);
-
-		// Get the page title (what shows in browser tab)
-		const title: string = await page.title();
-		console.log(`Title: ${title}`);
-
-		// Get entire HTML content of the page
-		// Useful for debugging or searching for specific data
-		const content: string = await page.content();
-		console.log(`Page content length: ${content.length} characters`);
+		// 4. Log the result
+		console.log("\n--- Resultados del Scraping ---");
+		console.log(`Título de la página: ${result.title}`);
+		console.log(`Longitud del contenido: ${result.contentLength} caracteres`);
+		console.log("-----------------------------\n");
 	} catch (error) {
-		console.error("An error occurred during scraping:", error);
+		console.error("❌ Ocurrió un error durante el proceso de scraping:", error);
 	} finally {
-		// ===== CLEANUP =====
-
-		await delay(2000); // Optional wait before closing (for debugging)
-
-		// Close browser and free up memory
-		await browser.close();
-
-		console.log("Done!");
+		// 5. Ensure the browser is closed
+		await browserClient.close();
+		console.log("✨ Proceso completado.");
 	}
-};
+}
 
-scrape().catch(console.error);
+// Execute the main function
+main().catch(console.error);

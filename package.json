@@ -6,7 +6,8 @@
 	"scripts": {
 		"dev": "bun run index.ts",
 		"format": "biome format --write --verbose",
-		"lint": "biome lint --write --verbose"
+		"lint": "biome lint --write --verbose",
+		"check": "biome check --write --verbose"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.3.11",
