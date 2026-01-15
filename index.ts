@@ -1,7 +1,7 @@
 import puppeteer, { type Browser, type Page } from "puppeteer";
 import { delay } from "./utils/util";
 
-const rose: string = Bun.color([255, 115, 168], "ansi-16m");
+const rose: string | null = Bun.color([255, 115, 168], "ansi-16m");
 console.log(`${rose}Bun!\x1b[0m`);
 
 const scrape = async (): Promise<void> => {
