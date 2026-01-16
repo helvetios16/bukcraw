@@ -1,43 +1,39 @@
-// index.ts
+/**
+ * @file index.ts
+ * @description Main entry point for the Goodreads scraping application.
+ */
 
 import type { Page } from "puppeteer";
 import { BrowserClient } from "./src/core/browser-client";
 import { GoodreadsService } from "./src/services/goodreads-service";
-import type { ScrapeResult } from "./src/types";
+import type { Book } from "./src/types";
+import { isValidBookId } from "./src/utils/util";
 
-/**
- * Main function to orchestrate the scraping process.
- */
 async function main(): Promise<void> {
-	const rose = Bun.color([255, 115, 168], "ansi-16m");
-	console.log(`${rose}Bun Scraping con Arquitectura en Capas!\x1b[0m`);
-
 	const browserClient = new BrowserClient();
 	let page: Page;
 
 	try {
-		// 1. Launch the browser and get a page
+		const bookId = "41886271-the-sword-of-kaigen";
+
+		if (!isValidBookId(bookId)) {
+			console.error(`❌ El ID del libro no es válido: ${bookId}`);
+			return;
+		}
+
 		page = await browserClient.launch();
 
-		// 2. Initialize the service with the page
 		const goodreadsService = new GoodreadsService(page);
 
-		// 3. Execute the scrape and get the result
-		const result: ScrapeResult = await goodreadsService.scrape();
+		const result: Book = await goodreadsService.lookBook(bookId);
 
-		// 4. Log the result
-		console.log("\n--- Resultados del Scraping ---");
-		console.log(`Título de la página: ${result.title}`);
-		console.log(`Longitud del contenido: ${result.contentLength} caracteres`);
-		console.log("-----------------------------\n");
+		console.log(result);
 	} catch (error) {
 		console.error("❌ Ocurrió un error durante el proceso de scraping:", error);
 	} finally {
-		// 5. Ensure the browser is closed
 		await browserClient.close();
 		console.log("✨ Proceso completado.");
 	}
 }
 
-// Execute the main function
 main().catch(console.error);

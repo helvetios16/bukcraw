@@ -11,3 +11,16 @@ export const hashUrl = (url: string) => {
 	hasher.update(url);
 	return hasher.digest("hex");
 };
+
+export const isValidUrl = (urlString: string): boolean => {
+	try {
+		new URL(urlString);
+		return true;
+	} catch {
+		return false;
+	}
+};
+
+export const isValidBookId = (id: string): boolean => {
+	return /^\d+[\w-]*$/.test(id);
+};

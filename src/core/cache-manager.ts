@@ -1,14 +1,47 @@
-import { mkdir } from "node:fs/promises";
-import { hashUrl } from "../utils/util";
+/**
+ * @file cache-manager.ts
+ * @description Manages local file caching for scraped content to reduce network requests.
+ */
+
+import { mkdirSync } from "node:fs";
+import { hashUrl, isValidUrl } from "../utils/util";
 
 export class CacheManager {
-	cacheDir: string;
+	readonly cacheDir: string;
 
-	constructor(cacheDir: string = "./.cache") {
+	constructor(cacheDir: string = "./cache") {
 		this.cacheDir = cacheDir;
+		mkdirSync(this.cacheDir, { recursive: true });
+	}
+
+	public async has(url: string): Promise<boolean> {
+		if (!isValidUrl(url)) {
+			throw new Error(`Invalid URL provided to cache: ${url}`);
+		}
+		const filename = `${this.cacheDir}/${hashUrl(url)}.html`;
+		const file = Bun.file(filename);
+
+		return await file.exists();
+	}
+
+	public async get(url: string): Promise<string | undefined> {
+		if (!isValidUrl(url)) {
+			throw new Error(`Invalid URL provided to cache: ${url}`);
+		}
+		const filename = `${this.cacheDir}/${hashUrl(url)}.html`;
+		const file = Bun.file(filename);
+
+		if (await file.exists()) {
+			return await file.text();
+		}
+
+		return undefined;
 	}
 
 	public async save(url: string, content: string, force: boolean = false): Promise<string> {
+		if (!isValidUrl(url)) {
+			throw new Error(`Invalid URL provided to cache: ${url}`);
+		}
 		const filename = `${this.cacheDir}/${hashUrl(url)}.html`;
 		const file = Bun.file(filename);
 
