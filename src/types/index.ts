@@ -18,5 +18,5 @@ export interface ScrapeResult {
 export interface Book {
 	title: string;
 	author: string;
-	rating?: number;
+	language: string;
 }
