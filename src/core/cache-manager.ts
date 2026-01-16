@@ -4,12 +4,11 @@ import { hashUrl } from "../utils/util";
 export class CacheManager {
 	cacheDir: string;
 
-	constructor(cacheDir = "./.cache") {
+	constructor(cacheDir: string = "./.cache") {
 		this.cacheDir = cacheDir;
-		mkdir(this.cacheDir, { recursive: true }).catch(() => {});
 	}
 
-	public async save(url: string, content: string, force = false) {
+	public async save(url: string, content: string, force: boolean = false): Promise<string> {
 		const filename = `${this.cacheDir}/${hashUrl(url)}.html`;
 		const file = Bun.file(filename);
 
