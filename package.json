@@ -1,5 +1,5 @@
 {
-  "name": "bun-scrapping-goodreads",
+  "name": "bun-book-crawler",
   "module": "index.ts",
   "type": "module",
   "private": true,

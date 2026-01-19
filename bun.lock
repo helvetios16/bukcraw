@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "bun-scrapping-goodreads",
+      "name": "bun-book-crawler",
       "dependencies": {
         "linkedom": "^0.18.12",
         "puppeteer": "^24.35.0",

@@ -1,4 +1,4 @@
-# bun-scrapping-goodreads
+# bun-book-crawler
 
 To install dependencies:
 
