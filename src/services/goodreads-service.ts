@@ -24,29 +24,62 @@ export class GoodreadsService {
     }
 
     const url = `${GOODREADS_URL}${BOOK_URL}${id}`;
-    console.log(` Buscando libro ${id}...`);
+    console.log(`🔎 Buscando libro ${id}...`);
 
-    // Try to load from cache first
-    const cachedData = await this.cache.get(url, ".json");
-    if (cachedData) {
-      console.log("✓ Usando datos de caché.");
-      try {
-        return parseBookData(JSON.parse(cachedData));
-      } catch (error) {
-        console.warn("⚠️ Error al parsear caché, reintentando con navegación...", error);
+    // 1. Intentar cargar desde caché
+    try {
+      const cachedData = await this.cache.get(url, ".json");
+      if (cachedData) {
+        console.log("📦 Cache hit (JSON).");
+        const book = parseBookData(JSON.parse(cachedData));
+        if (book) {
+          return book;
+        }
+        console.warn("⚠️ Datos en caché encontrados pero inválidos o incompletos.");
       }
+    } catch (error) {
+      console.warn("⚠️ Error al leer/parsear caché, continuando con red:", error);
     }
 
-    console.log(` Navegando a Goodreads: ${url}`);
-    await this.page.goto(url, { waitUntil: "domcontentloaded" });
+    // 2. Navegación Web
+    console.log(`🌐 Navegando a Goodreads: ${url}`);
+
+    const response = await this.page.goto(url, { waitUntil: "domcontentloaded" });
+
+    if (!response) {
+      throw new Error("❌ No se recibió respuesta del navegador.");
+    }
+
+    const status = response.status();
+
+    // Manejo de códigos de estado HTTP
+    if (status === 404) {
+      console.error("❌ Libro no encontrado (404).");
+      return null;
+    }
+
+    if (status === 403 || status === 429) {
+      throw new Error(`⛔ Acceso denegado o límite de peticiones excedido (Status: ${status}).`);
+    }
+
+    // Verificación de redirecciones no deseadas (Login / Captcha)
+    const currentUrl = this.page.url();
+    if (currentUrl.includes("/user/sign_in") || currentUrl.includes("captcha")) {
+      throw new Error("⛔ Redirigido a página de Login o Captcha. Se requiere intervención.");
+    }
+
+    if (!response.ok()) {
+      console.warn(`⚠️ Respuesta HTTP no exitosa: ${status}`);
+    }
 
     await this.page.waitForSelector("body");
-    console.log("✅ Página cargada.");
+    console.log("✅ Página cargada correctamente.");
 
     let bookData: Book | null = null;
 
-    // Safely attempt to extract Next.js data
+    // 3. Extracción de Datos (Next.js Data)
     const nextDataElement = await this.page.$("#__NEXT_DATA__");
+
     if (nextDataElement) {
       const nextData = await this.page.evaluate((el) => el.textContent, nextDataElement);
 
@@ -55,7 +88,7 @@ export class GoodreadsService {
           const parsedJson = JSON.parse(nextData);
           const formattedJson = JSON.stringify(parsedJson, null, 2);
 
-          // Cache the raw JSON
+          // Guardar JSON en caché
           await this.cache.save({
             url,
             content: formattedJson,
@@ -63,16 +96,17 @@ export class GoodreadsService {
             extension: ".json",
           });
 
-          // Parse the book data
+          // Parsear datos del libro
           bookData = parseBookData(parsedJson);
         } catch (e) {
-          console.warn("⚠️ Failed to parse or process Next.js data:", e);
+          console.warn("⚠️ Fallo al procesar datos de Next.js:", e);
         }
       }
     } else {
-      console.warn("⚠️ #__NEXT_DATA__ script tag not found on page.");
+      console.warn("⚠️ No se encontró la etiqueta #__NEXT_DATA__ en la página.");
     }
 
+    // 4. Guardar HTML como respaldo
     const content = await this.page.content();
     await this.cache.save({ url, content, force: false, extension: ".html" });
 
