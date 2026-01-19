@@ -5,17 +5,31 @@ import type { GoodreadsNextData } from "../types/goodreads-schema";
  * Type guard to validate if the input is a valid GoodreadsNextData object.
  */
 function isValidNextData(data: unknown): data is GoodreadsNextData {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "props" in data &&
-    typeof (data as GoodreadsNextData).props === "object" &&
-    (data as GoodreadsNextData).props !== null &&
-    "pageProps" in (data as GoodreadsNextData).props &&
-    typeof (data as GoodreadsNextData).props.pageProps === "object" &&
-    (data as GoodreadsNextData).props.pageProps !== null &&
-    "apolloState" in (data as GoodreadsNextData).props.pageProps
-  );
+  if (typeof data !== "object" || data === null) {
+    return false;
+  }
+
+  const hasProps = "props" in data && typeof (data as Record<string, unknown>).props === "object";
+  if (!hasProps) {
+    return false;
+  }
+
+  const props = (data as Record<string, unknown>).props as Record<string, unknown>;
+  if (props === null) {
+    return false;
+  }
+
+  const hasPageProps = "pageProps" in props && typeof props.pageProps === "object";
+  if (!hasPageProps) {
+    return false;
+  }
+
+  const pageProps = props.pageProps as Record<string, unknown>;
+  if (pageProps === null) {
+    return false;
+  }
+
+  return "apolloState" in pageProps && typeof pageProps.apolloState === "object";
 }
 
 /**
@@ -44,9 +58,10 @@ export function parseBookData(jsonData: unknown): Book | null {
   };
 
   // Find the main book entry using Regex for flexibility (starts with Book: and has titles)
-  const bookKey = Object.keys(state).find(
-    (key) => /^Book:/.test(key) && state[key].title && state[key].titleComplete,
-  );
+  const bookKey = Object.keys(state).find((key) => {
+    const entry = state[key];
+    return /^Book:/.test(key) && entry?.title && entry?.titleComplete;
+  });
 
   if (!bookKey) {
     return null;
