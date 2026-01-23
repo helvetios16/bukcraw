@@ -57,10 +57,29 @@ export function extractPaginationInfo(html: string): PaginationInfo {
   try {
     const { document } = parseHTML(html);
 
-    // Intentamos localizar el contenedor de paginación mediante elementos conocidos
-    // GoodReads a veces usa div.pagination y otras veces divs genéricos
-    let container = document.querySelector(".pagination");
+    // 1. Intentar determinar el total mediante el texto "Showing 1-30 of 123"
+    // Este texto suele estar en div.infoText o .showingPages
+    const infoText = document.querySelector(".infoText, .showingPages")?.textContent?.trim();
+    let totalFromInfo = 0;
 
+    if (infoText) {
+      // Regex para capturar: Showing 1-30 of 123
+      const match = infoText.match(/(\d+)-(\d+)\s+of\s+([\d,]+)/i);
+      if (match?.[2] && match[3]) {
+        const endItem = parseInt(match[2].replace(/,/g, ""), 10);
+        const startItem = parseInt(match[1].replace(/,/g, ""), 10);
+        const totalItems = parseInt(match[3].replace(/,/g, ""), 10);
+
+        const itemsPerPage = endItem - startItem + 1;
+
+        if (itemsPerPage > 0) {
+          totalFromInfo = Math.ceil(totalItems / itemsPerPage);
+        }
+      }
+    }
+
+    // 2. Localizar el contenedor de paginación para buscar el número de página más alto visible
+    let container = document.querySelector(".pagination");
     if (!container) {
       const nextPage = document.querySelector("a.next_page");
       if (nextPage) {
@@ -73,29 +92,27 @@ export function extractPaginationInfo(html: string): PaginationInfo {
       }
     }
 
-    if (!container) {
-      return { hasNextPage: false, totalPages: 1 };
+    let maxPageFromLinks = 1;
+    if (container) {
+      const allLinks = container.querySelectorAll("a, em.current");
+      allLinks.forEach((el) => {
+        const text = el.textContent?.trim();
+        if (text && /^\d+$/.test(text)) {
+          const pageNum = parseInt(text, 10);
+          if (pageNum > maxPageFromLinks) {
+            maxPageFromLinks = pageNum;
+          }
+        }
+      });
     }
 
-    const nextLink = container.querySelector("a.next_page");
-    // Buscamos tanto enlaces (a) como el elemento actual (em) que contengan números
-    const allLinks = container.querySelectorAll("a, em.current");
-
-    let maxPage = 1;
-
-    allLinks.forEach((el) => {
-      const text = el.textContent?.trim();
-      if (text && /^\d+$/.test(text)) {
-        const pageNum = parseInt(text, 10);
-        if (pageNum > maxPage) {
-          maxPage = pageNum;
-        }
-      }
-    });
+    // Usamos el mayor de los dos métodos
+    const totalPages = Math.max(maxPageFromLinks, totalFromInfo);
+    const hasNextPage = !!document.querySelector("a.next_page");
 
     return {
-      hasNextPage: !!nextLink,
-      totalPages: maxPage,
+      hasNextPage,
+      totalPages,
     };
   } catch (error) {
     console.error("Error extracting pagination info:", error);
