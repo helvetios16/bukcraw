@@ -4,25 +4,54 @@ import { Glob } from "bun";
 
 const CACHE_DIR = join(process.cwd(), "cache");
 
-// Find the most recent JSON file in the cache
+// Find the most recent JSON file in the cache that looks like a Book Data file
 const findLatestBookJson = async () => {
-  // Search in new structure (books folder) and fallback to root
   const glob = new Glob("**/*.json");
-  const files: string[] = [];
+  const candidates: { path: string; mtime: number }[] = [];
 
   for await (const file of glob.scan({ cwd: CACHE_DIR })) {
-    // Prefer files in 'books' directory or root, ignore others if specific logic needed later
-    files.push(join(CACHE_DIR, file));
+    const fullPath = join(CACHE_DIR, file);
+
+    // Ignorar archivos auxiliares conocidos
+    if (
+      file.endsWith("-parsed.json") ||
+      file.endsWith("-editions.json") ||
+      file.endsWith("-filter-meta.json") ||
+      file.includes("report-")
+    ) {
+      continue;
+    }
+
+    // Opcional: Verificar si el path sugiere que es un libro (contiene /book/show/)
+    // Esto depende de cómo CacheManager estructure las carpetas, pero el filtro anterior ayuda mucho.
+
+    candidates.push({
+      path: fullPath,
+      mtime: statSync(fullPath).mtime.getTime(),
+    });
   }
 
-  if (files.length === 0) {
+  if (candidates.length === 0) {
     return null;
   }
 
-  // Sort by modification time, newest first
-  return files.sort((a, b) => {
-    return statSync(b).mtime.getTime() - statSync(a).mtime.getTime();
-  })[0];
+  // Ordenar por fecha de modificación (más reciente primero)
+  candidates.sort((a, b) => b.mtime - a.mtime);
+
+  // Buscar el primer archivo que tenga la estructura correcta
+  for (const candidate of candidates) {
+    try {
+      const content = readFileSync(candidate.path, "utf-8");
+      const json = JSON.parse(content);
+      if (json?.props?.pageProps?.apolloState) {
+        return candidate.path;
+      }
+    } catch (e) {
+      // Ignorar archivos corruptos o que no son JSON válidos
+    }
+  }
+
+  return null;
 };
 
 const cachePath = await findLatestBookJson();
@@ -68,6 +97,7 @@ const workData = resolve(workRef);
 const book = {
   id: data.legacyId,
   legacyId: workData?.legacyId,
+  averageRating: workData?.stats?.averageRating, // Verificando la ruta sugerida
   webUrl: data?.webUrl,
   title: data.title,
   titleComplete: data.titleComplete,
@@ -78,4 +108,5 @@ const book = {
   format: data.details?.format,
 };
 
+console.log("Extracted Book Data:");
 console.log(book);
