@@ -10,8 +10,10 @@ import { getErrorMessage } from "./src/utils/util";
 async function main(): Promise<void> {
   const browserClient = new BrowserClient();
   try {
-    const bookId = "123224254-mistborn";
-    const blogId = "3037-a-celebration-of-friends-to-lovers-romances";
+    // const bookId = "123224254-mistborn";
+    const bookId = "241039381-the-last-contract-of-isako";
+    // const blogId = "3037-a-celebration-of-friends-to-lovers-romances";
+    const blogId = "3046-8-new-books-recommended-by-readers-this-week";
 
     const page = await browserClient.launch();
     // Aumentar timeout para estabilidad

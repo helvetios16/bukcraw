@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { Blog, Book, Edition } from "../types";
+import type { Book, Edition } from "../types";
 
 /**
  * Represents a raw row from the 'books' table in SQLite.
@@ -47,13 +47,14 @@ interface EditionRow {
  * Type guard for BookRow.
  */
 function isBookRow(data: unknown): data is BookRow {
+  const d = data as Record<string, unknown>;
   return (
     typeof data === "object" &&
     data !== null &&
-    "id" in data &&
-    typeof (data as any).id === "string" &&
-    "title" in data &&
-    typeof (data as any).title === "string"
+    "id" in d &&
+    typeof d.id === "string" &&
+    "title" in d &&
+    typeof d.title === "string"
   );
 }
 
@@ -61,13 +62,14 @@ function isBookRow(data: unknown): data is BookRow {
  * Type guard for EditionRow array.
  */
 function isEditionRow(data: unknown): data is EditionRow {
+  const d = data as Record<string, unknown>;
   return (
     typeof data === "object" &&
     data !== null &&
-    "title" in data &&
-    typeof (data as any).title === "string" &&
-    "link" in data &&
-    typeof (data as any).link === "string"
+    "title" in d &&
+    typeof d.title === "string" &&
+    "link" in d &&
+    typeof d.link === "string"
   );
 }
 
@@ -141,7 +143,7 @@ export class DatabaseService {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
-    
+
     this.db.run("CREATE INDEX IF NOT EXISTS idx_editions_book ON editions(book_legacy_id);");
     this.db.run("CREATE INDEX IF NOT EXISTS idx_editions_lang ON editions(language);");
   }
@@ -152,7 +154,9 @@ export class DatabaseService {
     const query = this.db.prepare("SELECT * FROM books WHERE id = ?");
     const result = query.get(id);
 
-    if (!isBookRow(result)) return null;
+    if (!isBookRow(result)) {
+      return null;
+    }
 
     return {
       id: result.id,
@@ -185,7 +189,7 @@ export class DatabaseService {
     const query = this.db.prepare(sql);
     const results = query.all(...params);
 
-    return (results as unknown[]).filter(isEditionRow).map(row => ({
+    return (results as unknown[]).filter(isEditionRow).map((row) => ({
       title: row.title,
       link: row.link,
       isbn: row.isbn || undefined,
@@ -195,7 +199,7 @@ export class DatabaseService {
       format: row.format || undefined,
       averageRating: row.average_rating || undefined,
       ratingsCount: row.ratings_count || undefined,
-      coverImage: row.cover_image || undefined
+      coverImage: row.cover_image || undefined,
     }));
   }
 
@@ -264,7 +268,7 @@ export class DatabaseService {
           $format: ed.format || null,
           $rating: ed.averageRating || 0,
           $count: ed.ratingsCount || 0,
-          $coverImage: ed.coverImage || null
+          $coverImage: ed.coverImage || null,
         });
       }
     });
@@ -272,28 +276,33 @@ export class DatabaseService {
     transaction(editions);
   }
 
-  public saveBlogReference(params: { blogId: string; bookId: string; blogTitle?: string; blogUrl?: string }): void {
+  public saveBlogReference(params: {
+    blogId: string;
+    bookId: string;
+    blogTitle?: string;
+    blogUrl?: string;
+  }): void {
     const { blogId, bookId, blogTitle, blogUrl } = params;
-    
+
     const insertBlog = this.db.prepare(`
       INSERT INTO blogs (id, title, url) 
       VALUES ($id, $title, $url)
       ON CONFLICT(id) DO UPDATE SET title = excluded.title;
     `);
-    
+
     insertBlog.run({
       $id: blogId,
       $title: blogTitle || "Unknown Blog",
-      $url: blogUrl || ""
+      $url: blogUrl || "",
     });
 
     const insertRel = this.db.prepare(`
       INSERT OR IGNORE INTO blog_books (blog_id, book_id) VALUES ($blogId, $bookId);
     `);
-    
+
     insertRel.run({
       $blogId: blogId,
-      $bookId: bookId
+      $bookId: bookId,
     });
   }
 

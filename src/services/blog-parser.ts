@@ -65,7 +65,68 @@ export function parseBlogHtml(html: string, url?: string): Blog | null {
           }
         }
 
-        // 2. Detect Book Links
+        // 2. Precise Match: Goodreads Tooltip/Book Container (Image & ID)
+        if (
+          element.tagName === "DIV" &&
+          element.classList.contains("js-tooltipTrigger") &&
+          element.classList.contains("book")
+        ) {
+          const anchor = element.querySelector("a");
+          const img = element.querySelector("img");
+          const href = anchor?.getAttribute("href");
+
+          if (href?.includes("/book/show/")) {
+            const match = href.match(/\/book\/show\/([^?#]+)/);
+            if (match?.[1]) {
+              const fullId = match[1];
+              const title = img?.getAttribute("alt")?.trim() || anchor?.textContent?.trim() || "";
+              const coverImage = img?.getAttribute("src");
+
+              const candidate: Book & { section?: string } = {
+                id: fullId,
+                title: title,
+                webUrl: href.startsWith("http") ? href : `https://www.goodreads.com${href}`,
+                section: currentSection,
+                coverImage: coverImage || undefined,
+              };
+
+              booksWithContext.push(candidate);
+              return;
+            }
+          }
+        }
+
+        // 3. Precise Match: Book Info Row (Title & Author text)
+        // Structure: <div class="bookInfoFullRow"><div class="bookTitle">...<a href="...">Title</a>...</div></div>
+        if (element.tagName === "DIV" && element.classList.contains("bookInfoFullRow")) {
+          const titleAnchor = element.querySelector(".bookTitle a[href*='/book/show/']");
+          if (titleAnchor) {
+            const href = titleAnchor.getAttribute("href");
+            const fullTitle = titleAnchor.textContent?.trim();
+
+            if (href && fullTitle) {
+              const match = href.match(/\/book\/show\/([^?#]+)/);
+              const numericId = match?.[1]?.split("-")[0];
+
+              // Find the last book added to see if we should merge
+              const lastBook = booksWithContext[booksWithContext.length - 1];
+              const lastNumericId = lastBook?.id?.split("-")[0];
+
+              if (lastBook && lastNumericId === numericId) {
+                // MERGE: Update the existing book with better text data
+                lastBook.title = fullTitle;
+                // Extract Author if available
+                const authorAnchor = element.querySelector(".bookTitle a[href*='/author/show/']");
+                if (authorAnchor) {
+                  lastBook.author = authorAnchor.textContent?.trim();
+                }
+                return; // Done processing this row
+              }
+            }
+          }
+        }
+
+        // 4. Fallback: Detect loose Book Links (for older blog formats)
         if (element.tagName === "A" && element.getAttribute("href")?.includes("/book/show/")) {
           const href = element.getAttribute("href");
 
@@ -96,6 +157,7 @@ export function parseBlogHtml(html: string, url?: string): Blog | null {
                 candidate.title = text.replace(/\s+/g, " ");
               }
 
+              // Deduplication logic for the fallback method
               const lastBook = booksWithContext[booksWithContext.length - 1];
               const lastId = lastBook?.id.split("-")[0];
 
