@@ -129,7 +129,7 @@ export class GoodreadsService {
         console.log("📦 Cache hit (Parsed JSON).");
         const blogData = JSON.parse(cachedParsed) as Blog;
 
-        if (blogData && blogData.mentionedBooks) {
+        if (blogData?.mentionedBooks) {
           for (const book of blogData.mentionedBooks) {
             this.db.saveBlogReference({
               blogId: id,
@@ -202,7 +202,8 @@ export class GoodreadsService {
     console.log(`✅ Filtros validados. Iniciando escaneo en: ${baseUrlWithParams}`);
 
     // 3. Procesar paginación
-    const { allEditions, scrapedUrls, totalPages } = await this.processEditionsPagination(baseUrlWithParams);
+    const { allEditions, scrapedUrls, totalPages } =
+      await this.processEditionsPagination(baseUrlWithParams);
 
     // 4. Guardar resultados
     await this.saveEditionsResults({
@@ -297,7 +298,11 @@ export class GoodreadsService {
     return false;
   }
 
-  private async validateFilters(baseUrl: string, legacyId: string | number, options: BookFilterOptions): Promise<void> {
+  private async validateFilters(
+    baseUrl: string,
+    legacyId: string | number,
+    options: BookFilterOptions,
+  ): Promise<void> {
     const cachedMetadata = await this.cache.get(baseUrl, "-parsed.json");
     if (!cachedMetadata) {
       throw new Error(
@@ -322,9 +327,15 @@ export class GoodreadsService {
   private buildEditionsUrl(baseUrl: string, options: BookFilterOptions): string {
     const query = new URLSearchParams();
     query.append("utf8", "✓");
-    if (options.sort) query.append("sort", options.sort);
-    if (options.format) query.append("filter_by_format", options.format);
-    if (options.language) query.append("filter_by_language", options.language);
+    if (options.sort) {
+      query.append("sort", options.sort);
+    }
+    if (options.format) {
+      query.append("filter_by_format", options.format);
+    }
+    if (options.language) {
+      query.append("filter_by_language", options.language);
+    }
     return `${baseUrl}?${query.toString()}`;
   }
 

@@ -1,46 +1,74 @@
 import { Database } from "bun:sqlite";
-import type { Book, Edition } from "../types";
+import { Blog, Book, Edition } from "../types";
 
 /**
  * Represents a raw row from the 'books' table in SQLite.
  * Fields matching SQLite behavior (NULL -> null).
  */
 interface BookRow {
-  id: string;
-  legacy_id?: string;
-  title: string;
-  title_complete?: string;
-  author?: string;
-  description?: string;
-  average_rating?: number;
-  page_count?: number;
-  publication_date?: string;
-  publisher?: string;
-  language?: string;
-  format?: string;
-  cover_image?: string;
-  genres?: string; // JSON string
-  series?: string; // JSON string
-  updated_at: string;
+  readonly id: string;
+  readonly legacy_id?: string;
+  readonly title: string;
+  readonly title_complete?: string;
+  readonly author?: string;
+  readonly description?: string;
+  readonly average_rating?: number;
+  readonly page_count?: number;
+  readonly publication_date?: string;
+  readonly publisher?: string;
+  readonly language?: string;
+  readonly format?: string;
+  readonly cover_image?: string;
+  readonly genres?: string; // JSON string
+  readonly series?: string; // JSON string
+  readonly updated_at: string;
 }
 
 /**
  * Represents a raw row from the 'editions' table in SQLite.
  */
 interface EditionRow {
-  id: number;
-  book_legacy_id?: string;
-  title: string;
-  link: string;
-  isbn?: string;
-  isbn10?: string;
-  asin?: string;
-  language?: string;
-  format?: string;
-  average_rating?: number;
-  ratings_count?: number;
-  cover_image?: string;
-  created_at: string;
+  readonly id: number;
+  readonly book_legacy_id?: string;
+  readonly title: string;
+  readonly link: string;
+  readonly isbn?: string;
+  readonly isbn10?: string;
+  readonly asin?: string;
+  readonly language?: string;
+  readonly format?: string;
+  readonly average_rating?: number;
+  readonly ratings_count?: number;
+  readonly cover_image?: string;
+  readonly created_at: string;
+}
+
+/**
+ * Type guard for BookRow.
+ */
+function isBookRow(data: unknown): data is BookRow {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "id" in data &&
+    typeof (data as any).id === "string" &&
+    "title" in data &&
+    typeof (data as any).title === "string"
+  );
+}
+
+/**
+ * Type guard for EditionRow array.
+ */
+function isEditionRow(data: unknown): data is EditionRow {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "title" in data &&
+    typeof (data as any).title === "string" &&
+    "link" in data &&
+    typeof (data as any).link === "string"
+  );
 }
 
 export class DatabaseService {
@@ -113,7 +141,7 @@ export class DatabaseService {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
-
+    
     this.db.run("CREATE INDEX IF NOT EXISTS idx_editions_book ON editions(book_legacy_id);");
     this.db.run("CREATE INDEX IF NOT EXISTS idx_editions_lang ON editions(language);");
   }
@@ -122,13 +150,9 @@ export class DatabaseService {
 
   public getBook(id: string): Book | null {
     const query = this.db.prepare("SELECT * FROM books WHERE id = ?");
-    // SQLite returns null for NULL fields, but our interface expects optional (undefined) or null
-    // We cast to unknown first to avoid conflict with strict typing, then validate mapping
-    const result = query.get(id) as unknown as BookRow | undefined;
+    const result = query.get(id);
 
-    if (!result) {
-      return null;
-    }
+    if (!isBookRow(result)) return null;
 
     return {
       id: result.id,
@@ -159,9 +183,9 @@ export class DatabaseService {
     }
 
     const query = this.db.prepare(sql);
-    const results = query.all(...params) as unknown as EditionRow[];
+    const results = query.all(...params);
 
-    return results.map((row) => ({
+    return (results as unknown[]).filter(isEditionRow).map(row => ({
       title: row.title,
       link: row.link,
       isbn: row.isbn || undefined,
@@ -171,7 +195,7 @@ export class DatabaseService {
       format: row.format || undefined,
       averageRating: row.average_rating || undefined,
       ratingsCount: row.ratings_count || undefined,
-      coverImage: row.cover_image || undefined,
+      coverImage: row.cover_image || undefined
     }));
   }
 
@@ -240,7 +264,7 @@ export class DatabaseService {
           $format: ed.format || null,
           $rating: ed.averageRating || 0,
           $count: ed.ratingsCount || 0,
-          $coverImage: ed.coverImage || null,
+          $coverImage: ed.coverImage || null
         });
       }
     });
@@ -248,30 +272,31 @@ export class DatabaseService {
     transaction(editions);
   }
 
-    public saveBlogReference(params: { blogId: string; bookId: string; blogTitle?: string; blogUrl?: string }): void {
-      const { blogId, bookId, blogTitle, blogUrl } = params;
-      
-      const insertBlog = this.db.prepare(`
-        INSERT INTO blogs (id, title, url) 
-        VALUES ($id, $title, $url)
-        ON CONFLICT(id) DO UPDATE SET title = excluded.title;
-      `);
-      
-      insertBlog.run({
-        $id: blogId,
-        $title: blogTitle || "Unknown Blog",
-        $url: blogUrl || ""
-      });
-  
-      const insertRel = this.db.prepare(`
-        INSERT OR IGNORE INTO blog_books (blog_id, book_id) VALUES ($blogId, $bookId);
-      `);
-      
-      insertRel.run({
-        $blogId: blogId,
-        $bookId: bookId
-      });
-    }
+  public saveBlogReference(params: { blogId: string; bookId: string; blogTitle?: string; blogUrl?: string }): void {
+    const { blogId, bookId, blogTitle, blogUrl } = params;
+    
+    const insertBlog = this.db.prepare(`
+      INSERT INTO blogs (id, title, url) 
+      VALUES ($id, $title, $url)
+      ON CONFLICT(id) DO UPDATE SET title = excluded.title;
+    `);
+    
+    insertBlog.run({
+      $id: blogId,
+      $title: blogTitle || "Unknown Blog",
+      $url: blogUrl || ""
+    });
+
+    const insertRel = this.db.prepare(`
+      INSERT OR IGNORE INTO blog_books (blog_id, book_id) VALUES ($blogId, $bookId);
+    `);
+    
+    insertRel.run({
+      $blogId: blogId,
+      $bookId: bookId
+    });
+  }
+
   public close(): void {
     this.db.close();
   }
