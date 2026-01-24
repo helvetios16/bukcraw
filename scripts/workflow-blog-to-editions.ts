@@ -2,7 +2,7 @@ import { BLOG_URL, GOODREADS_URL, WORK_URL } from "../src/config/constants";
 import { BrowserClient } from "../src/core/browser-client";
 import { CacheManager } from "../src/core/cache-manager";
 import { GoodreadsService } from "../src/services/goodreads-service";
-import { Blog, Book, BookFilterOptions, Edition } from "../src/types";
+import type { Blog, Book, BookFilterOptions, Edition } from "../src/types";
 
 /**
  * Interface for the final book report item.
@@ -111,7 +111,7 @@ async function main(): Promise<void> {
         const bookDetails = await service.scrapeBook(bookRef.id);
 
         if (!bookDetails) {
-            throw new Error(`No se pudieron obtener detalles para el libro ${bookRef.id}`);
+          throw new Error(`No se pudieron obtener detalles para el libro ${bookRef.id}`);
         }
 
         // Actualizar info del libro con datos más detallados
@@ -141,20 +141,23 @@ async function main(): Promise<void> {
         const query = new URLSearchParams();
         query.append("utf8", "✓");
         query.append("sort", sort);
-        if (format) query.append("filter_by_format", format);
-        if (language) query.append("filter_by_language", language);
+        if (format) {
+          query.append("filter_by_format", format);
+        }
+        if (language) {
+          query.append("filter_by_language", language);
+        }
 
         const editionsUrlKey = `${GOODREADS_URL}${WORK_URL}${legacyId}?${query.toString()}`;
         const editionsJson = await cache.get(editionsUrlKey, "-editions.json");
-        
+
         if (editionsJson) {
           const editions: Edition[] = JSON.parse(editionsJson);
           bookReportItem.editionsFound = editions;
           console.log(`✅ ${editions.length} ediciones agregadas al reporte.`);
         } else {
-            console.warn("⚠️ No se encontró el archivo de ediciones en caché.");
+          console.warn("⚠️ No se encontró el archivo de ediciones en caché.");
         }
-
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         console.error(`❌ Error procesando libro ${bookRef.id}: ${errorMessage}`);
@@ -167,17 +170,18 @@ async function main(): Promise<void> {
     // 3. Generar JSON Final
     console.log("\n💾 PASO 3: Guardando reporte final...");
     const reportFilename = `report-${blogId}-${language}.json`;
-    
+
     const fs = await import("node:fs");
     const path = await import("node:path");
     const finalPath = path.resolve(process.cwd(), reportFilename);
-    
+
     fs.writeFileSync(finalPath, JSON.stringify(finalReport, null, 2));
 
     console.log(`🎉 Reporte guardado exitosamente en: ${finalPath}`);
     console.log(`📊 Total libros procesados: ${finalReport.length}`);
-    console.log(`📚 Libros con ediciones encontradas: ${finalReport.filter(b => b.editionsFound.length > 0).length}`);
-
+    console.log(
+      `📚 Libros con ediciones encontradas: ${finalReport.filter((b) => b.editionsFound.length > 0).length}`,
+    );
   } catch (error: unknown) {
     const fatalMessage = error instanceof Error ? error.message : String(error);
     console.error("\n❌ Error fatal en el flujo de trabajo:", fatalMessage);
