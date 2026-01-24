@@ -11,8 +11,8 @@ export interface ScrapeResult {
  */
 export interface Book {
   id: string;
-  legacyId?: number;
   title: string;
+  legacyId?: number;
   titleComplete?: string;
   description?: string;
   author?: string;
@@ -20,7 +20,6 @@ export interface Book {
   genres?: string[];
   series?: string[];
   averageRating?: number;
-  ratingCount?: number;
   publicationDate?: string;
   publisher?: string;
   pageCount?: number;
@@ -30,9 +29,9 @@ export interface Book {
 }
 
 export interface Blog {
-  id?: string;
+  id: string;
+  title: string;
   webUrl?: string;
-  title?: string;
   description?: string;
   imageUrl?: string;
   content?: string;

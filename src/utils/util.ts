@@ -1,45 +1,32 @@
-// util.ts
+import { createHash } from "node:crypto";
 
-export const delay = async (ms: number): Promise<void> => await Bun.sleep(ms);
-
-const rose = Bun.color([255, 115, 168], "ansi-16m");
-
-export const dumpling = `${rose}bun!\x1b[0m`;
-
-export const hashUrl = (url: string): string => {
-  const hasher = new Bun.CryptoHasher("md5");
-  hasher.update(url);
-  return hasher.digest("hex");
-};
-
-export const isValidUrl = (urlString: string): boolean => {
-  try {
-    new URL(urlString);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-export const isValidBookId = (id: string): boolean => {
-  return /^\d+[\w-]*$/.test(id);
-};
+export const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Safely extracts the message from an unknown error object.
+ * Normalizes an error object into a readable string message.
  */
-export const getErrorMessage = (error: unknown): string => {
+export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
-  
-  if (typeof error === "string") {
-    return error;
-  }
-
-  if (typeof error === "object" && error !== null && "message" in error) {
-    return String((error as { message: unknown }).message);
-  }
-
   return String(error);
-};
+}
+
+/**
+ * Generates a consistent MD5 hash for a given URL.
+ */
+export function hashUrl(url: string): string {
+  if (!url || typeof url !== "string") {
+    throw new Error("Invalid URL provided for hashing");
+  }
+  return createHash("md5").update(url).digest("hex");
+}
+
+/**
+ * Validates if a string is a potentially valid Book ID (numeric or numeric-slug).
+ */
+export function isValidBookId(id: string): boolean {
+  // Matches "12345" or "12345-some-slug"
+  return /^\d+(-[\w-]+)?$/.test(id);
+}

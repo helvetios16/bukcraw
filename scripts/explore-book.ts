@@ -5,7 +5,7 @@ import { Glob } from "bun";
 const CACHE_DIR = join(process.cwd(), "cache");
 
 // Find the most recent JSON file in the cache that looks like a Book Data file
-const findLatestBookJson = async () => {
+const findLatestBookJson = async (): Promise<string | null> => {
   const glob = new Glob("**/*.json");
   const candidates: { path: string; mtime: number }[] = [];
 
@@ -21,9 +21,6 @@ const findLatestBookJson = async () => {
     ) {
       continue;
     }
-
-    // Opcional: Verificar si el path sugiere que es un libro (contiene /book/show/)
-    // Esto depende de cómo CacheManager estructure las carpetas, pero el filtro anterior ayuda mucho.
 
     candidates.push({
       path: fullPath,
@@ -46,7 +43,7 @@ const findLatestBookJson = async () => {
       if (json?.props?.pageProps?.apolloState) {
         return candidate.path;
       }
-    } catch (e) {
+    } catch (_e) {
       // Ignorar archivos corruptos o que no son JSON válidos
     }
   }
@@ -97,7 +94,7 @@ const workData = resolve(workRef);
 const book = {
   id: data.legacyId,
   legacyId: workData?.legacyId,
-  averageRating: workData?.stats?.averageRating, // Verificando la ruta sugerida
+  averageRating: workData?.stats?.averageRating,
   webUrl: data?.webUrl,
   title: data.title,
   titleComplete: data.titleComplete,
@@ -110,3 +107,8 @@ const book = {
 
 console.log("Extracted Book Data:");
 console.log(book);
+
+if (workData?.stats) {
+  console.log("\nWork Stats object content:");
+  console.log(workData.stats);
+}

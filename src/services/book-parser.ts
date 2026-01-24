@@ -89,6 +89,7 @@ export function parseBookData(jsonData: unknown): Book | null {
   return {
     id: data.legacyId ?? "", // Ensure string, though optional in interface, Book expects string
     legacyId: workData?.legacyId ? Number(workData.legacyId) : undefined,
+    averageRating: workData?.stats?.averageRating,
     title: data.title ?? "",
     titleComplete: data.titleComplete,
     author: authorData?.name,

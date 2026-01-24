@@ -3,10 +3,11 @@
  * @description Service responsible for navigating Goodreads and storing book information.
  */
 
-import type { Page } from "puppeteer";
+import type { ElementHandle, Page } from "puppeteer";
 import { BLOG_URL, BOOK_URL, GOODREADS_URL, WORK_URL } from "../config/constants";
 import { CacheManager } from "../core/cache-manager";
-import type { Book, BookFilterOptions, Edition } from "../types";
+import { DatabaseService } from "../core/database";
+import type { Blog, Book, BookFilterOptions, Edition } from "../types";
 import { delay, getErrorMessage, isValidBookId } from "../utils/util";
 import { parseBlogHtml } from "./blog-parser";
 import { parseBookData } from "./book-parser";
@@ -17,11 +18,24 @@ import {
   parseEditionsList,
 } from "./editions-parser";
 
+interface SaveEditionsParams {
+  baseUrl: string;
+  legacyId: string | number;
+  editions: Edition[];
+  urls: string[];
+  totalPages: number;
+  options: BookFilterOptions;
+}
+
 export class GoodreadsService {
   private readonly page: Page;
   private readonly cache = new CacheManager();
+  private readonly db = new DatabaseService();
 
   constructor(page: Page) {
+    if (!page) {
+      throw new Error("Puppeteer Page instance is required.");
+    }
     this.page = page;
   }
 
@@ -30,57 +44,24 @@ export class GoodreadsService {
       throw new Error(`Invalid Book ID format: ${id}`);
     }
 
+    // 0. Check Database Cache (Level 1)
+    const dbBook = this.db.getBook(id);
+    if (dbBook) {
+      console.log(`💾 DB Cache hit: Libro ${id} encontrado en base de datos.`);
+      return dbBook;
+    }
+
     const url = `${GOODREADS_URL}${BOOK_URL}${id}`;
     console.log(`🔎 Buscando libro ${id}...`);
 
-    // 1. Intentar cargar desde caché
-    try {
-      const cachedData = await this.cache.get(url, ".json");
-      if (cachedData) {
-        console.log("📦 Cache hit (JSON).");
-        const book = parseBookData(JSON.parse(cachedData));
-        if (book) {
-          return book;
-        }
-        console.warn("! Datos en caché encontrados pero inválidos o incompletos.");
-      }
-    } catch (error: unknown) {
-      console.warn("! Error al leer/parsear caché, continuando con red:", getErrorMessage(error));
+    // 1. Intentar cargar desde File Cache (Level 2)
+    const fileBook = await this.tryLoadBookFromFileCache(url);
+    if (fileBook) {
+      return fileBook;
     }
 
-    // 2. Navegación Web
-    console.log(`🌐 Navegando a Goodreads: ${url}`);
-
-    const response = await this.page.goto(url, { waitUntil: "domcontentloaded" });
-
-    if (!response) {
-      throw new Error("❌ No se recibió respuesta del navegador.");
-    }
-
-    const status = response.status();
-
-    // Manejo de códigos de estado HTTP
-    if (status === 404) {
-      console.error("❌ Libro no encontrado (404).");
-      return null;
-    }
-
-    if (status === 403 || status === 429) {
-      throw new Error(`⛔ Acceso denegado o límite de peticiones excedido (Status: ${status}).`);
-    }
-
-    // Verificación de redirecciones no deseadas (Login / Captcha)
-    const currentUrl = this.page.url();
-    if (currentUrl.includes("/user/sign_in") || currentUrl.includes("captcha")) {
-      throw new Error("⛔ Redirigido a página de Login o Captcha. Se requiere intervención.");
-    }
-
-    if (!response.ok()) {
-      console.warn(`! Respuesta HTTP no exitosa: ${status}`);
-    }
-
-    await this.page.waitForSelector("body");
-    console.log("✅ Página cargada correctamente.");
+    // 2. Navegación Web (Level 3)
+    await this.navigateTo(url);
 
     let bookData: Book | null = null;
 
@@ -88,27 +69,7 @@ export class GoodreadsService {
     const nextDataElement = await this.page.$("#__NEXT_DATA__");
 
     if (nextDataElement) {
-      const nextData = await this.page.evaluate((el) => el.textContent, nextDataElement);
-
-      if (nextData) {
-        try {
-          const parsedJson = JSON.parse(nextData);
-          const formattedJson = JSON.stringify(parsedJson, null, 2);
-
-          // Guardar JSON en caché
-          await this.cache.save({
-            url,
-            content: formattedJson,
-            force: false,
-            extension: ".json",
-          });
-
-          // Parsear datos del libro
-          bookData = parseBookData(parsedJson);
-        } catch (e: unknown) {
-          console.warn("! Fallo al procesar datos de Next.js:", getErrorMessage(e));
-        }
-      }
+      bookData = await this.processNextData(nextDataElement, url);
     } else {
       console.warn("! No se encontró la etiqueta #__NEXT_DATA__ en la página.");
     }
@@ -124,7 +85,6 @@ export class GoodreadsService {
     const url = `${GOODREADS_URL}${WORK_URL}${legacyId}`;
     console.log(`🔎 Buscando ediciones del libro (Work ID: ${legacyId})...`);
 
-    // 1. Intentar cargar desde caché (Parsed JSON)
     try {
       const cachedParsed = await this.cache.get(url, "-parsed.json");
       if (cachedParsed) {
@@ -132,43 +92,14 @@ export class GoodreadsService {
         return;
       }
     } catch (error: unknown) {
-      // Ignorar error de caché pero loguear para debug
       console.warn("ℹ️ Cache miss o error al leer caché de ediciones:", getErrorMessage(error));
     }
 
-    // 2. Navegación Web
-    console.log(`🌐 Navegando a Goodreads: ${url}`);
+    await this.navigateTo(url);
 
-    const response = await this.page.goto(url, { waitUntil: "domcontentloaded" });
-
-    if (!response) {
-      throw new Error("❌ No se recibió respuesta del navegador.");
-    }
-
-    const status = response.status();
-
-    if (status === 404) {
-      console.error("❌ Libro no encontrado (404).");
-      return;
-    }
-
-    if (status === 403 || status === 429) {
-      throw new Error(`⛔ Acceso denegado o límite de peticiones excedido (Status: ${status}).`);
-    }
-
-    const currentUrl = this.page.url();
-    if (currentUrl.includes("/user/sign_in") || currentUrl.includes("captcha")) {
-      throw new Error("⛔ Redirigido a página de Login o Captcha. Se requiere intervención.");
-    }
-
-    await this.page.waitForSelector("body");
-    console.log("✅ Página cargada correctamente.");
-
-    // 3. Obtener HTML y Guardar
     const content = await this.page.content();
     await this.cache.save({ url, content, force: false, extension: ".html" });
 
-    // 4. Parsear y Guardar JSON
     console.log("⚙  Parseando filtros de ediciones...");
     const editionsData = parseEditionsHtml(content);
 
@@ -192,52 +123,34 @@ export class GoodreadsService {
     const url = `${GOODREADS_URL}${BLOG_URL}${id}`;
     console.log(`🔎 Buscando blog ${id}...`);
 
-    // 1. Intentar cargar desde caché (HTML y procesar) o JSON parseado
     try {
-      // Verificar si ya tenemos el JSON procesado
       const cachedParsed = await this.cache.get(url, "-parsed.json");
       if (cachedParsed) {
         console.log("📦 Cache hit (Parsed JSON).");
+        const blogData = JSON.parse(cachedParsed) as Blog;
+
+        if (blogData && blogData.mentionedBooks) {
+          for (const book of blogData.mentionedBooks) {
+            this.db.saveBlogReference({
+              blogId: id,
+              bookId: book.id,
+              blogTitle: blogData.title,
+              blogUrl: blogData.webUrl,
+            });
+          }
+          console.log("💾 Blog y relaciones sincronizados con DB desde caché de archivos.");
+        }
         return;
       }
     } catch (error: unknown) {
-      // Ignorar error de caché pero loguear
       console.warn("ℹ️ Cache miss o error al leer caché de blog:", getErrorMessage(error));
     }
 
-    // 2. Navegación Web
-    console.log(`🌐 Navegando a Goodreads (Blog): ${url}`);
+    await this.navigateTo(url);
 
-    const response = await this.page.goto(url, { waitUntil: "domcontentloaded" });
-
-    if (!response) {
-      throw new Error("❌ No se recibió respuesta del navegador.");
-    }
-
-    const status = response.status();
-
-    if (status === 404) {
-      console.error("❌ Blog no encontrado (404).");
-      return;
-    }
-
-    if (status === 403 || status === 429) {
-      throw new Error(`⛔ Acceso denegado o límite de peticiones excedido (Status: ${status}).`);
-    }
-
-    const currentUrl = this.page.url();
-    if (currentUrl.includes("/user/sign_in") || currentUrl.includes("captcha")) {
-      throw new Error("⛔ Redirigido a página de Login o Captcha. Se requiere intervención.");
-    }
-
-    await this.page.waitForSelector("body");
-    console.log("✅ Página cargada correctamente.");
-
-    // 3. Obtener HTML y Guardar
     const content = await this.page.content();
     await this.cache.save({ url, content, force: false, extension: ".html" });
 
-    // 4. Parsear y Guardar JSON estructurado
     console.log("⚙  Parseando contenido del blog...");
     const blogData = parseBlogHtml(content, url);
 
@@ -252,6 +165,17 @@ export class GoodreadsService {
       console.log(
         `✅ Blog parseado y guardado (${blogData.mentionedBooks?.length || 0} libros encontrados).`,
       );
+
+      if (blogData.mentionedBooks) {
+        for (const book of blogData.mentionedBooks) {
+          this.db.saveBlogReference({
+            blogId: id,
+            bookId: book.id,
+            blogTitle: blogData.title,
+            blogUrl: blogData.webUrl,
+          });
+        }
+      }
     } else {
       console.warn("! No se pudo parsear el contenido del blog.");
     }
@@ -262,9 +186,118 @@ export class GoodreadsService {
     options: BookFilterOptions,
   ): Promise<void> {
     const baseUrl = `${GOODREADS_URL}${WORK_URL}${legacyId}`;
+
+    // 0. Check DB Cache
+    if (this.checkEditionsDbCache(legacyId, options.language)) {
+      return;
+    }
+
     console.log(`🔎 Verificando filtros para Work ID: ${legacyId}...`);
 
-    // 1. Cargar metadatos de validación
+    // 1. Validar filtros
+    await this.validateFilters(baseUrl, legacyId, options);
+
+    // 2. Construir URL
+    const baseUrlWithParams = this.buildEditionsUrl(baseUrl, options);
+    console.log(`✅ Filtros validados. Iniciando escaneo en: ${baseUrlWithParams}`);
+
+    // 3. Procesar paginación
+    const { allEditions, scrapedUrls, totalPages } = await this.processEditionsPagination(baseUrlWithParams);
+
+    // 4. Guardar resultados
+    await this.saveEditionsResults({
+      baseUrl: baseUrlWithParams,
+      legacyId,
+      editions: allEditions,
+      urls: scrapedUrls,
+      totalPages,
+      options,
+    });
+  }
+
+  // --- Helper Methods ---
+
+  private async navigateTo(url: string): Promise<void> {
+    console.log(`🌐 Navegando a Goodreads: ${url}`);
+    const response = await this.page.goto(url, { waitUntil: "domcontentloaded" });
+
+    if (!response) {
+      throw new Error("❌ No se recibió respuesta del navegador.");
+    }
+
+    const status = response.status();
+    if (status === 404) {
+      // Log logic handled by caller usually, but throwing helps flow control
+      console.error("❌ Recurso no encontrado (404).");
+      return;
+    }
+    if (status === 403 || status === 429) {
+      throw new Error(`⛔ Acceso denegado o límite de peticiones excedido (Status: ${status}).`);
+    }
+
+    const currentUrl = this.page.url();
+    if (currentUrl.includes("/user/sign_in") || currentUrl.includes("captcha")) {
+      throw new Error("⛔ Redirigido a página de Login o Captcha. Se requiere intervención.");
+    }
+
+    await this.page.waitForSelector("body");
+    console.log("✅ Página cargada correctamente.");
+  }
+
+  private async tryLoadBookFromFileCache(url: string): Promise<Book | null> {
+    try {
+      const cachedData = await this.cache.get(url, ".json");
+      if (cachedData) {
+        console.log("📦 File Cache hit (JSON).");
+        const book = parseBookData(JSON.parse(cachedData));
+        if (book) {
+          this.db.saveBook(book);
+          return book;
+        }
+        console.warn("! Datos en caché encontrados pero inválidos o incompletos.");
+      }
+    } catch (error: unknown) {
+      console.warn("! Error al leer/parsear caché, continuando con red:", getErrorMessage(error));
+    }
+    return null;
+  }
+
+  private async processNextData(element: ElementHandle, url: string): Promise<Book | null> {
+    const nextData = await this.page.evaluate((el) => el.textContent, element);
+    if (!nextData) {
+      return null;
+    }
+
+    try {
+      const parsedJson = JSON.parse(nextData);
+      await this.cache.save({
+        url,
+        content: JSON.stringify(parsedJson, null, 2),
+        force: false,
+        extension: ".json",
+      });
+
+      const bookData = parseBookData(parsedJson);
+      if (bookData) {
+        this.db.saveBook(bookData);
+      }
+      return bookData;
+    } catch (e: unknown) {
+      console.warn("! Fallo al procesar datos de Next.js:", getErrorMessage(e));
+      return null;
+    }
+  }
+
+  private checkEditionsDbCache(legacyId: string | number, language?: string): boolean {
+    const dbEditions = this.db.getEditions(legacyId, language);
+    if (dbEditions && dbEditions.length > 0) {
+      console.log(`💾 DB Cache hit: ${dbEditions.length} ediciones encontradas en BD.`);
+      return true;
+    }
+    return false;
+  }
+
+  private async validateFilters(baseUrl: string, legacyId: string | number, options: BookFilterOptions): Promise<void> {
     const cachedMetadata = await this.cache.get(baseUrl, "-parsed.json");
     if (!cachedMetadata) {
       throw new Error(
@@ -273,141 +306,112 @@ export class GoodreadsService {
     }
 
     const validOptions = JSON.parse(cachedMetadata) as EditionsFilters;
+    const { sort, format, language } = options;
 
-    // 2. Validar Parámetros
-    const sort = options.sort || "num_ratings";
-    const format = options.format || "";
-    const language = options.language || "";
-
-    if (!validOptions.sort.some((s) => s.value === sort)) {
+    if (sort && !validOptions.sort.some((s) => s.value === sort)) {
       throw new Error(`❌ Opción de ordenamiento inválida: '${sort}'.`);
     }
-
     if (format && !validOptions.format.some((f) => f.value === format)) {
       throw new Error(`❌ Formato inválido: '${format}'.`);
     }
-
     if (language && !validOptions.language.some((l) => l.value === language)) {
       throw new Error(`❌ Idioma inválido: '${language}'.`);
     }
+  }
 
-    // 3. Construir URL Base
+  private buildEditionsUrl(baseUrl: string, options: BookFilterOptions): string {
     const query = new URLSearchParams();
     query.append("utf8", "✓");
-    query.append("sort", sort);
-    if (format) {
-      query.append("filter_by_format", format);
-    }
-    if (language) {
-      query.append("filter_by_language", language);
-    }
+    if (options.sort) query.append("sort", options.sort);
+    if (options.format) query.append("filter_by_format", options.format);
+    if (options.language) query.append("filter_by_language", options.language);
+    return `${baseUrl}?${query.toString()}`;
+  }
 
-    const baseUrlWithParams = `${baseUrl}?${query.toString()}`;
-    console.log(`✅ Filtros validados. Iniciando escaneo en: ${baseUrlWithParams}`);
-
-    const scrapedPages: string[] = [];
+  private async processEditionsPagination(baseUrlWithParams: string) {
+    const scrapedUrls: string[] = [];
     const allEditions: Edition[] = [];
 
-    // --- Procesar Página 1 ---
-    const page1Url = baseUrlWithParams;
-    let page1Content = await this.cache.get(page1Url, ".html");
+    // Page 1
+    const { content: page1Content } = await this.getPageContent(baseUrlWithParams);
+    scrapedUrls.push(baseUrlWithParams);
 
-    if (!page1Content) {
-      console.log(`🌐 Navegando a página 1...`);
-      const response = await this.page.goto(page1Url, { waitUntil: "domcontentloaded" });
-
-      if (!response) {
-        throw new Error("No response");
-      }
-
-      if (response.status() === 404) {
-        console.error("❌ Página no encontrada (404).");
-        return;
-      }
-
-      await this.page.waitForSelector("body");
-      page1Content = await this.page.content();
-      await this.cache.save({
-        url: page1Url,
-        content: page1Content,
-        force: true,
-        extension: ".html",
-      });
-    } else {
-      console.log(`📦 Cache hit página 1.`);
-    }
-    scrapedPages.push(page1Url);
-
-    // Parsear ediciones página 1
     const page1Editions = parseEditionsList(page1Content);
     allEditions.push(...page1Editions);
     console.log(`📄 Página 1: ${page1Editions.length} ediciones encontradas.`);
 
-    // --- Detectar Paginación ---
     const pagination = extractPaginationInfo(page1Content);
     console.log(`📊 Paginación detectada: ${pagination.totalPages} páginas totales.`);
 
-    // --- Procesar Páginas Restantes ---
+    // Next Pages
     if (pagination.totalPages > 1) {
       for (let i = 2; i <= pagination.totalPages; i++) {
         const pageUrl = `${baseUrlWithParams}&page=${i}`;
-        let content = await this.cache.get(pageUrl, ".html");
+        const { content, fromCache } = await this.getPageContent(pageUrl);
 
-        if (!content) {
-          console.log(`🌐 Navegando a página ${i}/${pagination.totalPages}...`);
-          await delay(2500 + Math.random() * 2500);
-
-                      const response = await this.page.goto(pageUrl, { waitUntil: "domcontentloaded" });
-          
-                      if (!response || !response.ok()) {
-                        const status = response ? response.status() : "No Response";
-                        console.warn(`! Fallo al cargar página ${i} (Status: ${status}).`);
-                        continue;
-                      }
-                    await delay(1000);
-          await this.page.waitForSelector("body");
-          content = await this.page.content();
-          await this.cache.save({ url: pageUrl, content, force: true, extension: ".html" });
-        } else {
-          console.log(`📦 Cache hit página ${i}/${pagination.totalPages}.`);
+        if (!fromCache) {
+          await delay(2500 + Math.random() * 2500); // Respectful delay
         }
 
-        scrapedPages.push(pageUrl);
-
-        // Parsear ediciones página actual
+        scrapedUrls.push(pageUrl);
         const pageEditions = parseEditionsList(content);
         allEditions.push(...pageEditions);
         console.log(`📄 Página ${i}: ${pageEditions.length} ediciones encontradas.`);
       }
     }
 
-    // --- Guardar Resultados de Ediciones ---
+    return { allEditions, scrapedUrls, totalPages: pagination.totalPages };
+  }
+
+  private async getPageContent(url: string): Promise<{ content: string; fromCache: boolean }> {
+    let content = await this.cache.get(url, ".html");
+    if (content) {
+      console.log(`📦 Cache hit página.`);
+      return { content, fromCache: true };
+    }
+
+    console.log(`🌐 Navegando a página: ${url}`);
+    await this.page.goto(url, { waitUntil: "domcontentloaded" });
+    await this.page.waitForSelector("body");
+    content = await this.page.content();
+    await this.cache.save({ url, content, force: true, extension: ".html" });
+
+    return { content, fromCache: false };
+  }
+
+  private async saveEditionsResults(params: SaveEditionsParams): Promise<void> {
+    const { baseUrl, legacyId, editions, urls, totalPages, options } = params;
+
     await this.cache.save({
-      url: baseUrlWithParams,
-      content: JSON.stringify(allEditions, null, 2),
+      url: baseUrl,
+      content: JSON.stringify(editions, null, 2),
       force: true,
       extension: "-editions.json",
     });
 
-    // --- Guardar Reporte de Metadata ---
+    if (editions.length > 0) {
+      this.db.saveEditions(legacyId, editions);
+      console.log("💾 Ediciones guardadas en Base de Datos.");
+    }
+
     const metadata = {
       timestamp: new Date().toISOString(),
       legacyId,
-      filters: { sort, format, language },
+      filters: options,
       stats: {
-        totalPages: pagination.totalPages,
-        scrapedUrls: scrapedPages,
-        totalEditions: allEditions.length,
+        totalPages,
+        scrapedUrls: urls,
+        totalEditions: editions.length,
       },
     };
 
     await this.cache.save({
-      url: baseUrlWithParams,
+      url: baseUrl,
       content: JSON.stringify(metadata, null, 2),
       force: true,
       extension: "-filter-meta.json",
     });
 
-    console.log(`✅ Proceso completado. ${allEditions.length} ediciones guardadas.`);
+    console.log(`✅ Proceso completado. ${editions.length} ediciones guardadas.`);
   }
 }
