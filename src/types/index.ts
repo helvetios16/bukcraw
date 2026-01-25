@@ -22,6 +22,7 @@ export interface Book {
   language?: string;
   format?: string;
   coverImage?: string;
+  updatedAt?: string;
 }
 
 export interface Blog {
@@ -59,4 +60,5 @@ export interface Edition {
   asin?: string;
   language?: string;
   averageRating?: number;
+  createdAt?: string;
 }

@@ -162,6 +162,7 @@ export class DatabaseService {
       language: result.language || undefined,
       format: result.format || undefined,
       coverImage: result.cover_image || undefined,
+      updatedAt: result.updated_at,
     };
   }
 
@@ -188,6 +189,7 @@ export class DatabaseService {
       averageRating: row.average_rating || undefined,
       pages: row.pages_count || undefined,
       coverImage: row.cover_image || undefined,
+      createdAt: row.created_at,
     }));
   }
 
@@ -258,6 +260,19 @@ export class DatabaseService {
     });
 
     transaction(editions);
+  }
+
+  public deleteEditions(legacyId: string | number, language?: string): void {
+    let sql = "DELETE FROM editions WHERE book_legacy_id = ?";
+    const params: (string | number)[] = [String(legacyId)];
+
+    if (language) {
+      sql += " AND language = ?";
+      params.push(language);
+    }
+
+    const query = this.db.prepare(sql);
+    query.run(...params);
   }
 
   public saveBlogReference(params: {

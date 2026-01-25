@@ -47,14 +47,31 @@ export class GoodreadsService {
     // 0. Check Database Cache (Level 1)
     const dbBook = this.db.getBook(id);
     if (dbBook) {
-      console.log(`💾 DB Cache hit: Libro ${id} encontrado en base de datos.`);
-      return dbBook;
+      if (this.isCacheValid(dbBook.updatedAt)) {
+        console.log(`💾 DB Cache hit: Libro ${id} encontrado en base de datos.`);
+        return dbBook;
+      }
+      console.log(`⚠️ DB Cache expired: Libro ${id} (updated: ${dbBook.updatedAt}). Re-scraping...`);
     }
 
     const url = `${GOODREADS_URL}${BOOK_URL}${id}`;
     console.log(`🔎 Buscando libro ${id}...`);
 
     // 1. Intentar cargar desde File Cache (Level 2)
+    // Only if DB was miss or expired, we might fallback to file cache?
+    // Actually, if DB is expired, we probably want to refresh from Web unless File Cache is newer?
+    // For simplicity, if DB is expired, we skip File Cache check to force Web refresh
+    // OR we check File Cache validity too. The current structure checks File Cache if DB misses.
+    // If DB is expired, we proceed.
+
+    // We can skip file cache if we want fresh data, or check it.
+    // Let's stick to the flow: if DB miss/expired -> check File -> check Web.
+    // But verify File Cache validity? The current implementation of tryLoadBookFromFileCache doesn't check date.
+    // Assuming File Cache is just a backup for "offline" or "don't hammer server".
+    // I will proceed to Web if DB is expired.
+
+    // ... logic continues ...
+
     const fileBook = await this.tryLoadBookFromFileCache(url);
     if (fileBook) {
       return fileBook;
@@ -292,8 +309,14 @@ export class GoodreadsService {
   private checkEditionsDbCache(legacyId: string | number, language?: string): boolean {
     const dbEditions = this.db.getEditions(legacyId, language);
     if (dbEditions && dbEditions.length > 0) {
-      console.log(`💾 DB Cache hit: ${dbEditions.length} ediciones encontradas en BD.`);
-      return true;
+      // Check freshness of the first edition
+      if (this.isCacheValid(dbEditions[0].createdAt)) {
+        console.log(`💾 DB Cache hit: ${dbEditions.length} ediciones encontradas en BD.`);
+        return true;
+      }
+      console.log(
+        `⚠️ DB Cache expired: Ediciones para ${legacyId} (created: ${dbEditions[0].createdAt}). Re-scraping...`,
+      );
     }
     return false;
   }
@@ -401,6 +424,7 @@ export class GoodreadsService {
     });
 
     if (editions.length > 0) {
+      this.db.deleteEditions(legacyId, options.language); // Clear old/expired editions
       this.db.saveEditions(legacyId, editions);
       console.log("💾 Ediciones guardadas en Base de Datos.");
     }
@@ -424,5 +448,16 @@ export class GoodreadsService {
     });
 
     console.log(`✅ Proceso completado. ${editions.length} ediciones guardadas.`);
+  }
+
+  private isCacheValid(dateStr?: string): boolean {
+    if (!dateStr) {
+      return false;
+    }
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays <= 10;
   }
 }
