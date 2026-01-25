@@ -69,6 +69,7 @@ async function main(): Promise<void> {
   const browserClient = new BrowserClient();
   const cache = new CacheManager();
   const finalReport: BookReport[] = [];
+  const errors: { id: string; title: string; error: string }[] = [];
 
   try {
     const page = await browserClient.launch();
@@ -156,12 +157,17 @@ async function main(): Promise<void> {
           bookReportItem.editionsFound = editions;
           console.log(`✅ ${editions.length} ediciones agregadas al reporte.`);
         } else {
-          console.warn("⚠️ No se encontró el archivo de ediciones en caché.");
+          console.warn("! No se encontró el archivo de ediciones en caché.");
         }
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         console.error(`❌ Error procesando libro ${bookRef.id}: ${errorMessage}`);
         bookReportItem.processingError = errorMessage;
+        errors.push({
+          id: bookRef.id,
+          title: bookRef.title || "Desconocido",
+          error: errorMessage,
+        });
       } finally {
         finalReport.push(bookReportItem);
       }
@@ -182,6 +188,14 @@ async function main(): Promise<void> {
     console.log(
       `📚 Libros con ediciones encontradas: ${finalReport.filter((b) => b.editionsFound.length > 0).length}`,
     );
+
+    if (errors.length > 0) {
+      console.log("\n!  RESUMEN DE ERRORES:");
+      errors.forEach((err, idx) => {
+        console.log(`${idx + 1}. [${err.id}] ${err.title}`);
+        console.log(`   Error: ${err.error}`);
+      });
+    }
   } catch (error: unknown) {
     const fatalMessage = error instanceof Error ? error.message : String(error);
     console.error("\n❌ Error fatal en el flujo de trabajo:", fatalMessage);
