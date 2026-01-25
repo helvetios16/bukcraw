@@ -27,8 +27,8 @@ export function hashUrl(url: string): string {
  * Validates if a string is a potentially valid Book ID (numeric or numeric-slug).
  */
 export function isValidBookId(id: string): boolean {
-  // Matches "12345" or "12345-some-slug"
-  return /^\d+(-[\w-]+)?$/.test(id);
+  // Matches "12345", "12345-some-slug", or "12345.Some_Title"
+  return /^\d+([.-][\w.-]+)?$/.test(id);
 }
 
 /**
