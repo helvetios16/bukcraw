@@ -21,7 +21,10 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@opentui/core": "^0.1.75",
+    "@opentui/react": "^0.1.75",
     "linkedom": "^0.18.12",
-    "puppeteer": "^24.35.0"
+    "puppeteer": "^24.35.0",
+    "react": "^19.2.3"
   }
 }
