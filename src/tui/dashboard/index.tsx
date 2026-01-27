@@ -1,9 +1,9 @@
-import type { Renderer } from "@opentui/core";
+import type { CliRenderer } from "@opentui/core";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { Dashboard } from "./Dashboard";
 
-const renderer: Renderer = await createCliRenderer({
+const renderer: CliRenderer = await createCliRenderer({
   exitOnCtrlC: false,
 });
 

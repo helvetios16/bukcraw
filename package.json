@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "start": "bun run index.ts",
-    "dashboard": "bun run src/tui/dashboard/index.tsx",
+    "tui": "bun run src/tui/dashboard/index.tsx",
     "cache:clear": "bun run scripts/clear-cache.ts",
     "lint": "biome lint .",
     "lint:fix": "biome lint --unsafe --write .",
@@ -16,7 +16,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/react": "^19.2.9"
   },
   "peerDependencies": {
     "typescript": "^5"
