@@ -2,6 +2,7 @@ import type { CliRenderer } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import type { JSX } from "react";
 import { useState } from "react";
+import { IconBackground } from "../components/atoms/IconBackground";
 import { PlaceholderView } from "../components/molecules/PlaceholderView";
 import { MainMenu, type MenuOption } from "../components/organisms/MainMenu";
 
@@ -58,39 +59,41 @@ export function Dashboard({ renderer }: DashboardProps): JSX.Element {
   };
 
   return (
-    <box
-      flexDirection="column"
-      width="100%"
-      height="100%"
-      justifyContent="center"
-      alignItems="center"
-    >
-      {currentView === "menu" ? (
-        <MainMenu options={menuItems} onSelect={handleMenuSelect} onQuit={handleQuit} />
-      ) : (
-        <>
-          {currentView === "search_book" && (
-            <PlaceholderView
-              title="SEARCH BOOK"
-              description="Enter the title of the book you want to find."
-            />
-          )}
+    <IconBackground intensity={20}>
+      <box
+        flexDirection="column"
+        width="100%"
+        height="100%"
+        justifyContent="center"
+        alignItems="center"
+      >
+        {currentView === "menu" ? (
+          <MainMenu options={menuItems} onSelect={handleMenuSelect} onQuit={handleQuit} />
+        ) : (
+          <>
+            {currentView === "search_book" && (
+              <PlaceholderView
+                title="SEARCH BOOK"
+                description="Enter the title of the book you want to find."
+              />
+            )}
 
-          {currentView === "search_editions" && (
-            <PlaceholderView
-              title="SEARCH EDITIONS"
-              description="Enter the Book ID to find all its editions."
-            />
-          )}
+            {currentView === "search_editions" && (
+              <PlaceholderView
+                title="SEARCH EDITIONS"
+                description="Enter the Book ID to find all its editions."
+              />
+            )}
 
-          {currentView === "search_blog" && (
-            <PlaceholderView
-              title="SEARCH BLOG BOOKS"
-              description="Enter the Blog URL to scrape for books."
-            />
-          )}
-        </>
-      )}
-    </box>
+            {currentView === "search_blog" && (
+              <PlaceholderView
+                title="SEARCH BLOG BOOKS"
+                description="Enter the Blog URL to scrape for books."
+              />
+            )}
+          </>
+        )}
+      </box>
+    </IconBackground>
   );
 }
