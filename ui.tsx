@@ -1,12 +1,27 @@
+import type { Renderer } from "@opentui/core";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard } from "@opentui/react";
+import type { JSX } from "react";
+import { COLORS } from "./src/config/tui-colors";
 
-const renderer = await createCliRenderer({
+const renderer: Renderer = await createCliRenderer({
   exitOnCtrlC: true,
 });
 
-function NodeCard({ title, status }: { title: string; status: "Active" | "Offline" }) {
-  const isOnline = status === "Active";
+interface NodeCardProps {
+  readonly title: string;
+  readonly status: "Active" | "Offline";
+}
+
+interface KeyboardKey {
+  readonly name: string;
+  readonly ctrl: boolean;
+  readonly meta: boolean;
+  readonly shift: boolean;
+}
+
+function NodeCard({ title, status }: NodeCardProps): JSX.Element {
+  const isOnline: boolean = status === "Active";
 
   return (
     <box
@@ -23,22 +38,18 @@ function NodeCard({ title, status }: { title: string; status: "Active" | "Offlin
       <text>{"CPU: 12%\nRAM: 4GB"}</text>
 
       <box flexDirection="row" justifyContent="flex-end">
-        <text fg={isOnline ? "#00FF00" : "#FF0000"}>{isOnline ? "● ON" : "○ OFF"}</text>
+        <text fg={isOnline ? COLORS.SUCCESS : COLORS.ERROR}>{isOnline ? "● ON" : "○ OFF"}</text>
       </box>
     </box>
   );
 }
 
-function App() {
-  useKeyboard((key) => {
+function App(): JSX.Element {
+  useKeyboard((key: KeyboardKey) => {
     if (key.name === "q") {
-      // It is good practice to destroy the renderer before exiting
-      // But since we are inside a component, we can just exit the process
-      // and the OS cleans up. Alternatively, one could use a context or
-      // passing the renderer prop if explicit cleanup is needed.
-      // For simple CLI apps, process.exit(0) is often sufficient
-      // if the renderer handles signal cleanup (which it does by default).
-      renderer.destroy();
+      if (renderer) {
+        renderer.destroy();
+      }
       process.exit(0);
     }
   });
@@ -54,16 +65,15 @@ function App() {
         gap={2}
       >
         <NodeCard title="Servidor-Alpha" status="Active" />
-        <text fg="gray">──▶</text>
+        <text fg={COLORS.SECONDARY}>──▶</text>
         <NodeCard title="Base-Datos-01" status="Offline" />
       </box>
 
       <box flexDirection="column" alignItems="center" padding={1}>
-        <text fg="gray">Press 'q' to exit</text>
+        <text fg={COLORS.TEXT_DIM}>Press 'q' to exit</text>
       </box>
     </box>
   );
 }
 
 createRoot(renderer).render(<App />);
-
