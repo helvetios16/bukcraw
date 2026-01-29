@@ -1,3 +1,4 @@
+import { useKeyboard } from "@opentui/react";
 import type { JSX } from "react";
 import { COLORS } from "../../../config/tui-colors";
 import { SectionHeader } from "../atoms/SectionHeader";
@@ -5,9 +6,16 @@ import { SectionHeader } from "../atoms/SectionHeader";
 interface PlaceholderViewProps {
   readonly title: string;
   readonly description: string;
+  readonly onBack: () => void;
 }
 
-export function PlaceholderView({ title, description }: PlaceholderViewProps): JSX.Element {
+export function PlaceholderView({ title, description, onBack }: PlaceholderViewProps): JSX.Element {
+  useKeyboard((key) => {
+    if (key.name === "escape") {
+      onBack();
+    }
+  });
+
   return (
     <box flexDirection="column" alignItems="center" width="100%">
       <SectionHeader title={title} />

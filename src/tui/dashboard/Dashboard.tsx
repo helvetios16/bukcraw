@@ -4,6 +4,7 @@ import type { JSX } from "react";
 import { useState } from "react";
 import { IconBackground } from "../components/atoms/IconBackground";
 import { PlaceholderView } from "../components/molecules/PlaceholderView";
+import { BookSearch } from "../components/organisms/BookSearch";
 import { MainMenu, type MenuOption } from "../components/organisms/MainMenu";
 
 // --- Interfaces ---
@@ -40,11 +41,6 @@ export function Dashboard({ renderer }: DashboardProps): JSX.Element {
       }
       process.exit(0);
     }
-
-    // Return to menu from sub-views
-    if (currentView !== "menu" && key.name === "escape") {
-      setCurrentView("menu");
-    }
   });
 
   const handleMenuSelect = (value: string) => {
@@ -71,17 +67,13 @@ export function Dashboard({ renderer }: DashboardProps): JSX.Element {
           <MainMenu options={menuItems} onSelect={handleMenuSelect} onQuit={handleQuit} />
         ) : (
           <>
-            {currentView === "search_book" && (
-              <PlaceholderView
-                title="SEARCH BOOK"
-                description="Enter the title of the book you want to find."
-              />
-            )}
+            {currentView === "search_book" && <BookSearch onBack={() => setCurrentView("menu")} />}
 
             {currentView === "search_editions" && (
               <PlaceholderView
                 title="SEARCH EDITIONS"
                 description="Enter the Book ID to find all its editions."
+                onBack={() => setCurrentView("menu")}
               />
             )}
 
@@ -89,6 +81,7 @@ export function Dashboard({ renderer }: DashboardProps): JSX.Element {
               <PlaceholderView
                 title="SEARCH BLOG BOOKS"
                 description="Enter the Blog URL to scrape for books."
+                onBack={() => setCurrentView("menu")}
               />
             )}
           </>
