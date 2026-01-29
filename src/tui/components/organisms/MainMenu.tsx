@@ -40,7 +40,7 @@ export function MainMenu({ options, onSelect, onQuit }: MainMenuProps): JSX.Elem
 
   return (
     <box flexDirection="column" alignItems="center" width="100%">
-      <SectionHeader title="BUN BOOK CRAWLER - MAIN MENU" />
+      <SectionHeader title="BUKCRAW" />
       <box flexDirection="column" gap={1} marginTop={1} alignItems="center">
         {options.map((item, index) => (
           <MenuItem key={item.value} label={item.label} isSelected={index === selectedIndex} />
