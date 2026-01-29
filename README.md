@@ -1,4 +1,4 @@
-# bun-book-crawler
+# bukcraw
 
 To install dependencies:
 
