@@ -1,5 +1,5 @@
 {
-  "name": "bun-book-crawler",
+  "name": "bukcraw",
   "module": "index.ts",
   "type": "module",
   "private": true,
