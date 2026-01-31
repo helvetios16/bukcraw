@@ -13,7 +13,7 @@ export function parseBlogHtml(html: string, url?: string): Blog | null {
     // Extract metadata from Open Graph tags
     const rawTitle =
       document.querySelector('meta[property="og:title"]')?.getAttribute("content") || "";
-    const title = rawTitle.trim() || undefined;
+    const title = rawTitle.trim() || "Untitled Blog";
     const description =
       document.querySelector('meta[property="og:description"]')?.getAttribute("content") ||
       undefined;
@@ -23,6 +23,8 @@ export function parseBlogHtml(html: string, url?: string): Blog | null {
       url ||
       document.querySelector('meta[property="og:url"]')?.getAttribute("content") ||
       undefined;
+
+    const blogId = webUrl?.match(/\/blog\/show\/(\d+)/)?.[1] || "unknown";
 
     // Main content container (or body fallback)
     const contentContainer = document.querySelector(".newsShowColumn") || document.body;
@@ -193,15 +195,16 @@ export function parseBlogHtml(html: string, url?: string): Blog | null {
 
     for (const b of booksWithContext) {
       const hasContent = b.title || b.coverImage;
-      const numericId = b.id.split("-")[0]; // Normalize ID for uniqueness check
+      const numericId = b.id.split("-")[0] ?? ""; // Normalize ID for uniqueness check
 
-      if (hasContent && !uniqueIds.has(numericId)) {
+      if (hasContent && numericId && !uniqueIds.has(numericId)) {
         uniqueIds.add(numericId);
         books.push(b);
       }
     }
 
     return {
+      id: blogId,
       title,
       description,
       imageUrl,

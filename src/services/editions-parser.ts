@@ -57,13 +57,13 @@ export function parseEditionsList(html: string): Edition[] {
       if (dataRows[1]) {
         const text = dataRows[1].textContent?.trim() || "";
         const publishedMatch = text.match(/Published\s+(.*?)\s+by\s+(.*)/i);
-        if (publishedMatch) {
+        if (publishedMatch?.[1] && publishedMatch[2]) {
           publishedDate = publishedMatch[1].trim();
           publisher = publishedMatch[2].trim();
         } else {
           // Intento alternativo solo fecha
           const dateMatch = text.match(/Published\s+(.*)/i);
-          if (dateMatch) {
+          if (dateMatch?.[1]) {
             publishedDate = dateMatch[1].trim();
           }
         }
@@ -105,7 +105,7 @@ export function parseEditionsList(html: string): Edition[] {
           } else if (titleText.includes("Average rating")) {
             // "4.55 (25,860 ratings)"
             const ratingMatch = valueText.match(/(\d+(\.\d+)?)/);
-            if (ratingMatch) {
+            if (ratingMatch?.[1]) {
               averageRating = parseFloat(ratingMatch[1]);
             }
           }
@@ -176,7 +176,7 @@ export function extractPaginationInfo(html: string): PaginationInfo {
     if (infoText) {
       // Regex para capturar: Showing 1-30 of 123
       const match = infoText.match(/(\d+)-(\d+)\s+of\s+([\d,]+)/i);
-      if (match?.[2] && match[3]) {
+      if (match?.[1] && match[2] && match[3]) {
         const endItem = parseInt(match[2].replace(/,/g, ""), 10);
         const startItem = parseInt(match[1].replace(/,/g, ""), 10);
         const totalItems = parseInt(match[3].replace(/,/g, ""), 10);

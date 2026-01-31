@@ -26,6 +26,10 @@ export interface ApolloNode {
   imageUrl?: string;
   name?: string;
   webUrl?: string;
+  stats?: {
+    averageRating?: number;
+    ratingsCount?: number;
+  };
   // Allow other properties since the graph is extensive
   [key: string]: unknown;
 }

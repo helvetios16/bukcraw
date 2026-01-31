@@ -308,14 +308,16 @@ export class GoodreadsService {
 
   private checkEditionsDbCache(legacyId: string | number, language?: string): boolean {
     const dbEditions = this.db.getEditions(legacyId, language);
-    if (dbEditions && dbEditions.length > 0) {
+    const firstEdition = dbEditions?.[0];
+
+    if (dbEditions && dbEditions.length > 0 && firstEdition) {
       // Check freshness of the first edition
-      if (this.isCacheValid(dbEditions[0].createdAt)) {
+      if (this.isCacheValid(firstEdition.createdAt)) {
         console.log(`💾 DB Cache hit: ${dbEditions.length} ediciones encontradas en BD.`);
         return true;
       }
       console.log(
-        `⚠️ DB Cache expired: Ediciones para ${legacyId} (created: ${dbEditions[0].createdAt}). Re-scraping...`,
+        `⚠️ DB Cache expired: Ediciones para ${legacyId} (created: ${firstEdition.createdAt}). Re-scraping...`,
       );
     }
     return false;
