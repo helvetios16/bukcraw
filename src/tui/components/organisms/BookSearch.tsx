@@ -1,5 +1,5 @@
 import { useKeyboard } from "@opentui/react";
-import type { JSX } from "react";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { COLORS } from "../../../config/tui-colors";
 import { MOCK_BOOKS } from "../../../mocks/books/data";
@@ -13,7 +13,7 @@ interface BookSearchProps {
   readonly onBack: () => void;
 }
 
-export function BookSearch({ onBack }: BookSearchProps): JSX.Element {
+export function BookSearch({ onBack }: BookSearchProps): ReactNode {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Book[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
@@ -60,7 +60,10 @@ export function BookSearch({ onBack }: BookSearchProps): JSX.Element {
       setSelectedIndex((prev) => (prev > -1 ? prev - 1 : -1));
     } else if (key.name === "return" || key.name === "enter") {
       if (selectedIndex >= 0 && selectedIndex < results.length) {
-        setSelectedBook(results[selectedIndex]);
+        const book = results[selectedIndex];
+        if (book) {
+          setSelectedBook(book);
+        }
       }
     }
   });
@@ -120,9 +123,9 @@ export function BookSearch({ onBack }: BookSearchProps): JSX.Element {
               />
             ))
           ) : (
-            <text fg={COLORS.WARNING} textAlign="center">
-              No books found.
-            </text>
+            <box width="100%" justifyContent="center">
+              <text fg={COLORS.WARNING}>No books found.</text>
+            </box>
           )}
         </box>
       )}

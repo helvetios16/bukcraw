@@ -1,5 +1,5 @@
 import { useKeyboard } from "@opentui/react";
-import type { JSX } from "react";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { COLORS } from "../../../config/tui-colors";
 import { MenuItem } from "../atoms/MenuItem";
@@ -23,7 +23,7 @@ interface KeyboardKey {
   readonly shift: boolean;
 }
 
-export function MainMenu({ options, onSelect, onQuit }: MainMenuProps): JSX.Element {
+export function MainMenu({ options, onSelect, onQuit }: MainMenuProps): ReactNode {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   useKeyboard((key: KeyboardKey) => {
@@ -32,7 +32,10 @@ export function MainMenu({ options, onSelect, onQuit }: MainMenuProps): JSX.Elem
     } else if (key.name === "down" || key.name === "j") {
       setSelectedIndex((prev) => (prev < options.length - 1 ? prev + 1 : 0));
     } else if (key.name === "return" || key.name === "enter") {
-      onSelect(options[selectedIndex].value);
+      const option = options[selectedIndex];
+      if (option) {
+        onSelect(option.value);
+      }
     } else if (key.name === "q") {
       onQuit();
     }
@@ -46,7 +49,7 @@ export function MainMenu({ options, onSelect, onQuit }: MainMenuProps): JSX.Elem
           <MenuItem key={item.value} label={item.label} isSelected={index === selectedIndex} />
         ))}
       </box>
-      <box marginTop={2} paddingX={1}>
+      <box marginTop={2} paddingLeft={1} paddingRight={1}>
         <text fg={COLORS.TEXT_DIM}>Use ↑/↓ to navigate, Enter to select, 'q' to quit.</text>
       </box>
     </box>

@@ -1,6 +1,6 @@
 import type { CliRenderer } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
-import type { JSX } from "react";
+import type { ReactNode } from "react";
 import { useState } from "react";
 import { IconBackground } from "../components/atoms/IconBackground";
 import { PlaceholderView } from "../components/molecules/PlaceholderView";
@@ -24,7 +24,7 @@ type ViewState = "menu" | "search_book" | "search_editions" | "search_blog";
 
 // --- Main App ---
 
-export function Dashboard({ renderer }: DashboardProps): JSX.Element {
+export function Dashboard({ renderer }: DashboardProps): ReactNode {
   const [currentView, setCurrentView] = useState<ViewState>("menu");
 
   const menuItems: MenuOption[] = [

@@ -1,5 +1,5 @@
 import { useKeyboard } from "@opentui/react";
-import type { JSX } from "react";
+import type { ReactNode } from "react";
 import { COLORS } from "../../../config/tui-colors";
 import type { Book } from "../../../types";
 
@@ -8,7 +8,7 @@ interface BookDetailsProps {
   readonly onClose: () => void;
 }
 
-export function BookDetails({ book, onClose }: BookDetailsProps): JSX.Element {
+export function BookDetails({ book, onClose }: BookDetailsProps): ReactNode {
   useKeyboard((key) => {
     if (key.name === "escape" || key.name === "backspace") {
       onClose();
@@ -31,9 +31,7 @@ export function BookDetails({ book, onClose }: BookDetailsProps): JSX.Element {
       }}
     >
       <box flexDirection="column" gap={1} flexGrow={1}>
-        <text fg={COLORS.PRIMARY} bold={true} style={{ textDecoration: "underline" }}>
-          {book.titleComplete || book.title}
-        </text>
+        <text fg={COLORS.PRIMARY}>{book.titleComplete || book.title}</text>
 
         <box flexDirection="row" gap={2}>
           <text fg={COLORS.TEXT_BRIGHT}>Author:</text>
