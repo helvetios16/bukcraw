@@ -46,3 +46,12 @@ export const BLOG_URL = "/blog/show/";
 export const WORK_URL = "/work/editions/";
 export const SEARCH_PARAMS =
   "?utf8=✓&sort=num_ratings&filter_by_format=Kindle+Edition&filter_by_language=spa";
+
+export const APP_TITLE = `
+ ██████╗ ██╗   ██╗██╗  ██╗ ██████╗██████╗  █████╗ ██╗    ██╗
+ ██╔══██╗██║   ██║██║ ██╔╝██╔════╝██╔══██╗██╔══██╗██║    ██║
+ ██████╔╝██║   ██║█████╔╝ ██║     ██████╔╝███████║██║ █╗ ██║
+ ██╔══██╗██║   ██║██╔═██╗ ██║     ██╔══██╗██╔══██║██║███╗██║
+ ██████╔╝╚██████╔╝██║  ██╗╚██████╗██║  ██║██║  ██║╚███╔███╔╝
+ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚══╝╚══╝ 
+`.trim();

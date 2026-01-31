@@ -1,6 +1,7 @@
 import { useKeyboard } from "@opentui/react";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { APP_TITLE } from "../../../config/constants";
 import { COLORS } from "../../../config/tui-colors";
 import { MenuItem } from "../atoms/MenuItem";
 import { SectionHeader } from "../atoms/SectionHeader";
@@ -43,7 +44,7 @@ export function MainMenu({ options, onSelect, onQuit }: MainMenuProps): ReactNod
 
   return (
     <box flexDirection="column" alignItems="center" width="100%">
-      <SectionHeader title="BUKCRAW" />
+      <SectionHeader title={APP_TITLE} />
       <box flexDirection="column" rowGap={1} marginTop={1} alignItems="center">
         {options.map((item, index) => (
           <MenuItem key={item.value} label={item.label} isSelected={index === selectedIndex} />

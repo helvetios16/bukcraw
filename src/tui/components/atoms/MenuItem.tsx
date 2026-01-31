@@ -7,12 +7,12 @@ interface MenuItemProps {
 }
 
 export function MenuItem({ label, isSelected }: MenuItemProps): ReactNode {
+  const color = isSelected ? COLORS.PRIMARY : COLORS.TEXT_BRIGHT;
   return (
-    <box paddingRight={1}>
-      <text fg={isSelected ? COLORS.PRIMARY : COLORS.TEXT_BRIGHT}>
-        {isSelected ? "> " : "  "}
-        {label}
-      </text>
+    <box flexDirection="row">
+      <text fg={color}>{isSelected ? "> " : "  "}</text>
+      <text fg={color}>{label}</text>
+      <text> </text>
     </box>
   );
 }
