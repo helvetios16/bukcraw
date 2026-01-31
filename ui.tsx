@@ -1,10 +1,10 @@
-import type { Renderer } from "@opentui/core";
+import type { CliRenderer } from "@opentui/core";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard } from "@opentui/react";
-import type { JSX } from "react";
+import type { ReactNode } from "react";
 import { COLORS } from "./src/config/tui-colors";
 
-const renderer: Renderer = await createCliRenderer({
+const renderer: CliRenderer = await createCliRenderer({
   exitOnCtrlC: true,
 });
 
@@ -20,7 +20,7 @@ interface KeyboardKey {
   readonly shift: boolean;
 }
 
-function NodeCard({ title, status }: NodeCardProps): JSX.Element {
+function NodeCard({ title, status }: NodeCardProps): ReactNode {
   const isOnline: boolean = status === "Active";
 
   return (
@@ -44,7 +44,7 @@ function NodeCard({ title, status }: NodeCardProps): JSX.Element {
   );
 }
 
-function App(): JSX.Element {
+function App(): ReactNode {
   useKeyboard((key: KeyboardKey) => {
     if (key.name === "q") {
       if (renderer) {

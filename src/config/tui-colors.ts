@@ -8,7 +8,9 @@ interface TuiColors {
   readonly PRIMARY: string;
   readonly SECONDARY: string;
   readonly TEXT_BRIGHT: string;
+  readonly TEXT: string;
   readonly TEXT_DIM: string;
+  readonly BORDER: string;
   readonly BACKGROUND_ICON: string;
 }
 
@@ -20,6 +22,8 @@ export const COLORS: TuiColors = {
   PRIMARY: "cyan",
   SECONDARY: "gray",
   TEXT_BRIGHT: "white",
+  TEXT: "#D3D3D3",
   TEXT_DIM: "gray",
+  BORDER: "white",
   BACKGROUND_ICON: "#484343",
 } as const;

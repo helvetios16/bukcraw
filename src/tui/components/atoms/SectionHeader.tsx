@@ -1,15 +1,13 @@
-import type { JSX } from "react";
+import type { ReactNode } from "react";
 
 interface SectionHeaderProps {
   readonly title: string;
 }
 
-export function SectionHeader({ title }: SectionHeaderProps): JSX.Element {
+export function SectionHeader({ title }: SectionHeaderProps): ReactNode {
   return (
     <box alignItems="center" width="100%" marginBottom={1}>
-      <text bold textAlign="center">
-        {title}
-      </text>
+      <text>{title}</text>
     </box>
   );
 }

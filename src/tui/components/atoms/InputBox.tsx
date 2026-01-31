@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import type { ReactNode } from "react";
 import { COLORS } from "../../../config/tui-colors";
 
 interface InputBoxProps {
@@ -7,7 +7,7 @@ interface InputBoxProps {
   readonly focused?: boolean;
   readonly onInput?: (value: string) => void;
   readonly onSubmit?: (value: string) => void;
-  readonly width?: number | string;
+  readonly width?: number | "auto" | `${number}%`;
 }
 
 export function InputBox({
@@ -16,7 +16,7 @@ export function InputBox({
   onInput,
   onSubmit,
   width = 40,
-}: InputBoxProps): JSX.Element {
+}: InputBoxProps): ReactNode {
   return (
     <box
       width={width}
@@ -24,15 +24,21 @@ export function InputBox({
       border={true}
       borderStyle="rounded"
       borderColor={focused ? COLORS.PRIMARY : COLORS.BORDER}
-      paddingX={1}
+      paddingLeft={1}
+      paddingRight={1}
     >
       <input
         placeholder={placeholder}
         focused={focused}
         onInput={onInput}
-        onSubmit={onSubmit}
+        onSubmit={(e: string | { value?: unknown }) => {
+          if (typeof e === "string") {
+            onSubmit?.(e);
+          } else if (e && typeof e.value === "string") {
+            onSubmit?.(e.value);
+          }
+        }}
         style={{
-          fg: COLORS.TEXT,
           placeholderColor: COLORS.TEXT_DIM,
         }}
       />
