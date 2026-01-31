@@ -1,19 +1,43 @@
 import { useKeyboard } from "@opentui/react";
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { COLORS } from "../../../config/tui-colors";
 import type { Book } from "../../../types";
+import { EditionList } from "./editions/EditionList";
 
 interface BookDetailsProps {
   readonly book: Book;
   readonly onClose: () => void;
+  readonly allowEditionsView?: boolean;
 }
 
-export function BookDetails({ book, onClose }: BookDetailsProps): ReactNode {
+export function BookDetails({ book, onClose, allowEditionsView = true }: BookDetailsProps): ReactNode {
+  const [showEditions, setShowEditions] = useState(false);
+
   useKeyboard((key) => {
-    if (key.name === "escape" || key.name === "backspace") {
+    if (showEditions) {
+      return; // Let EditionList handle its own keys
+    }
+
+    if (key.name === "escape" || key.name === "backspace" || key.name === "q") {
       onClose();
+    } else if (allowEditionsView && key.name === "e") {
+      setShowEditions(true);
     }
   });
+
+  if (showEditions) {
+    return (
+      <box width="100%" height="100%" justifyContent="center" alignItems="center">
+        <EditionList
+          bookLegacyId={book.legacyId}
+          bookTitle={book.title}
+          bookAuthor={book.author}
+          onBack={() => setShowEditions(false)}
+        />
+      </box>
+    );
+  }
 
   return (
     <box
@@ -25,9 +49,7 @@ export function BookDetails({ book, onClose }: BookDetailsProps): ReactNode {
       flexDirection="column"
       padding={2}
       style={{
-        // Center the modal
         position: "absolute",
-        // OpenTUI centering might depend on parent, assuming parent is full width/height flex center
       }}
     >
       <box flexDirection="column" gap={1} flexGrow={1}>
@@ -51,8 +73,9 @@ export function BookDetails({ book, onClose }: BookDetailsProps): ReactNode {
         </box>
       </box>
 
-      <box width="100%" height={1} marginTop={1} flexDirection="row" justifyContent="flex-end">
-        <text fg={COLORS.TEXT_DIM}>[ ESC ] Back</text>
+      <box width="100%" height={1} marginTop={1} flexDirection="row" justifyContent="flex-end" gap={2}>
+        {allowEditionsView && <text fg={COLORS.TEXT_DIM}>[ e ] Editions</text>}
+        <text fg={COLORS.TEXT_DIM}>[ ESC/q ] Back</text>
       </box>
     </box>
   );

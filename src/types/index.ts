@@ -48,6 +48,8 @@ export interface BookFilterOptions {
 }
 
 export interface Edition {
+  id?: string;
+  bookLegacyId?: number;
   title: string;
   link: string;
   coverImage?: string;

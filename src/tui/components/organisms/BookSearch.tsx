@@ -52,6 +52,11 @@ export function BookSearch({ onBack }: BookSearchProps): ReactNode {
       return;
     }
 
+    if (key.name === "q" && selectedIndex !== -1) {
+      onBack();
+      return;
+    }
+
     if (results.length === 0) {
       return;
     }
@@ -143,7 +148,7 @@ export function BookSearch({ onBack }: BookSearchProps): ReactNode {
 
       {hasSearched && results.length > 0 && (
         <text fg={COLORS.TEXT_DIM} marginTop={1}>
-          Use Arrows to navigate grid. Enter to view details.
+          Use Arrows to navigate grid. Enter to view details. [ q ] to return.
         </text>
       )}
     </box>
