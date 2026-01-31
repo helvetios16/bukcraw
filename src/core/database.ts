@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import type { Book, Edition } from "../types";
+import type { Blog, Book, Edition } from "../types";
 
 /**
  * Represents a raw row from the 'books' table in SQLite.
@@ -18,6 +18,16 @@ interface BookRow {
   readonly format?: string;
   readonly cover_image?: string;
   readonly updated_at: string;
+}
+
+/**
+ * Represents a raw row from the 'blogs' table in SQLite.
+ */
+interface BlogRow {
+  readonly id: string;
+  readonly url: string;
+  readonly title: string;
+  readonly scraped_at: string;
 }
 
 /**
@@ -49,6 +59,23 @@ function isBookRow(data: unknown): data is BookRow {
     typeof d.id === "string" &&
     "title" in d &&
     typeof d.title === "string"
+  );
+}
+
+/**
+ * Type guard for BlogRow.
+ */
+function isBlogRow(data: unknown): data is BlogRow {
+  const d = data as Record<string, unknown>;
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "id" in d &&
+    typeof d.id === "string" &&
+    "title" in d &&
+    typeof d.title === "string" &&
+    "url" in d &&
+    typeof d.url === "string"
   );
 }
 
@@ -183,6 +210,18 @@ export class DatabaseService {
       format: result.format || undefined,
       coverImage: result.cover_image || undefined,
       updatedAt: result.updated_at,
+    }));
+  }
+
+  public getAllBlogs(): Blog[] {
+    const query = this.db.prepare("SELECT * FROM blogs");
+    const results = query.all();
+
+    return (results as unknown[]).filter(isBlogRow).map((row) => ({
+      id: row.id,
+      title: row.title,
+      webUrl: row.url,
+      createdAt: row.scraped_at,
     }));
   }
 
