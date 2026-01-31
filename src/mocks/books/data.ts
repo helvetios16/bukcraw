@@ -3,6 +3,7 @@ import type { Book } from "../../types";
 export const MOCK_BOOKS: Book[] = [
   {
     id: "1",
+    legacyId: 101,
     title: "The Rust Programming Language",
     titleComplete: "The Rust Programming Language (Covers Rust 2018)",
     author: "Steve Klabnik & Carol Nichols",
@@ -18,6 +19,7 @@ export const MOCK_BOOKS: Book[] = [
   },
   {
     id: "2",
+    legacyId: 102,
     title: "Clean Code",
     titleComplete: "Clean Code: A Handbook of Agile Software Craftsmanship",
     author: "Robert C. Martin",
@@ -32,6 +34,7 @@ export const MOCK_BOOKS: Book[] = [
   },
   {
     id: "3",
+    legacyId: 103,
     title: "Design Patterns",
     titleComplete: "Design Patterns: Elements of Reusable Object-Oriented Software",
     author: "Erich Gamma, Richard Helm, Ralph Johnson, John Vlissides",
@@ -45,6 +48,7 @@ export const MOCK_BOOKS: Book[] = [
   },
   {
     id: "4",
+    legacyId: 104,
     title: "The Pragmatic Programmer",
     titleComplete: "The Pragmatic Programmer: Your Journey to Mastery",
     author: "David Thomas, Andrew Hunt",
@@ -58,6 +62,7 @@ export const MOCK_BOOKS: Book[] = [
   },
   {
     id: "5",
+    legacyId: 105,
     title: "Refactoring",
     titleComplete: "Refactoring: Improving the Design of Existing Code",
     author: "Martin Fowler",
@@ -71,6 +76,7 @@ export const MOCK_BOOKS: Book[] = [
   },
   {
     id: "6",
+    legacyId: 106,
     title: "Domain-Driven Design",
     titleComplete: "Domain-Driven Design: Tackling Complexity in the Heart of Software",
     author: "Eric Evans",
@@ -84,6 +90,7 @@ export const MOCK_BOOKS: Book[] = [
   },
   {
     id: "7",
+    legacyId: 107,
     title: "Introduction to Algorithms",
     titleComplete: "Introduction to Algorithms, 3rd Edition",
     author: "Thomas H. Cormen, Charles E. Leiserson, Ronald L. Rivest, Clifford Stein",
@@ -97,6 +104,7 @@ export const MOCK_BOOKS: Book[] = [
   },
   {
     id: "8",
+    legacyId: 108,
     title: "Structure and Interpretation of Computer Programs",
     author: "Harold Abelson, Gerald Jay Sussman",
     averageRating: 4.8,
@@ -106,6 +114,7 @@ export const MOCK_BOOKS: Book[] = [
   },
   {
     id: "9",
+    legacyId: 109,
     title: "Code Complete",
     titleComplete: "Code Complete: A Practical Handbook of Software Construction, Second Edition",
     author: "Steve McConnell",
@@ -116,6 +125,7 @@ export const MOCK_BOOKS: Book[] = [
   },
   {
     id: "10",
+    legacyId: 110,
     title: "Head First Design Patterns",
     author: "Eric Freeman, Bert Bates, Kathy Sierra, Elisabeth Robson",
     averageRating: 4.3,
