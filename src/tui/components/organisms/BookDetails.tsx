@@ -11,7 +11,11 @@ interface BookDetailsProps {
   readonly allowEditionsView?: boolean;
 }
 
-export function BookDetails({ book, onClose, allowEditionsView = true }: BookDetailsProps): ReactNode {
+export function BookDetails({
+  book,
+  onClose,
+  allowEditionsView = true,
+}: BookDetailsProps): ReactNode {
   const [showEditions, setShowEditions] = useState(false);
 
   useKeyboard((key) => {
@@ -73,7 +77,14 @@ export function BookDetails({ book, onClose, allowEditionsView = true }: BookDet
         </box>
       </box>
 
-      <box width="100%" height={1} marginTop={1} flexDirection="row" justifyContent="flex-end" gap={2}>
+      <box
+        width="100%"
+        height={1}
+        marginTop={1}
+        flexDirection="row"
+        justifyContent="flex-end"
+        gap={2}
+      >
         {allowEditionsView && <text fg={COLORS.TEXT_DIM}>[ e ] Editions</text>}
         <text fg={COLORS.TEXT_DIM}>[ ESC/q ] Back</text>
       </box>

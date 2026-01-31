@@ -28,7 +28,9 @@ export function EditionList({
   const [selectedEdition, setSelectedEdition] = useState<Edition | null>(null);
 
   useKeyboard((key) => {
-    if (selectedEdition) return;
+    if (selectedEdition) {
+      return;
+    }
 
     if (key.name === "escape" || key.name === "backspace" || key.name === "q") {
       onBack();
