@@ -21,6 +21,7 @@ export function BookSearch({ onBack }: BookSearchProps): ReactNode {
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+  const [isSearchMode, setIsSearchMode] = useState(false);
 
   const handleSearch = (value: string) => {
     setQuery(value);
@@ -47,12 +48,33 @@ export function BookSearch({ onBack }: BookSearchProps): ReactNode {
       return;
     }
 
-    if (key.name === "escape") {
-      onBack();
+    // --- Global Vim Controls ---
+
+    // Enter Insert Mode
+    if (!isSearchMode && key.name === "i") {
+      setIsSearchMode(true);
       return;
     }
 
-    if (key.name === "q" && selectedIndex !== -1) {
+    // Exit Insert Mode or Go Back
+    if (key.name === "escape") {
+      if (isSearchMode) {
+        setIsSearchMode(false);
+      } else {
+        onBack();
+      }
+      return;
+    }
+
+    // If in Search Mode (Insert), ignore other nav keys here
+    // InputBox handles the actual text input
+    if (isSearchMode) {
+      return;
+    }
+
+    // --- Navigation Mode (Normal) ---
+
+    if (key.name === "q") {
       onBack();
       return;
     }
@@ -62,19 +84,19 @@ export function BookSearch({ onBack }: BookSearchProps): ReactNode {
     }
 
     if (selectedIndex === -1) {
-      if (key.name === "down" || key.name === "right") {
+      if (key.name === "down" || key.name === "right" || key.name === "j" || key.name === "l") {
         setSelectedIndex(0);
       }
       return;
     }
 
-    if (key.name === "right") {
+    if (key.name === "right" || key.name === "l") {
       setSelectedIndex((prev) => (prev < results.length - 1 ? prev + 1 : prev));
-    } else if (key.name === "left") {
+    } else if (key.name === "left" || key.name === "h") {
       setSelectedIndex((prev) => (prev > 0 ? prev - 1 : prev));
-    } else if (key.name === "down") {
+    } else if (key.name === "down" || key.name === "j") {
       setSelectedIndex((prev) => (prev + COLUMNS < results.length ? prev + COLUMNS : prev));
-    } else if (key.name === "up") {
+    } else if (key.name === "up" || key.name === "k") {
       setSelectedIndex((prev) => (prev - COLUMNS >= 0 ? prev - COLUMNS : -1));
     } else if (key.name === "return" || key.name === "enter") {
       if (selectedIndex >= 0 && selectedIndex < results.length) {
@@ -111,11 +133,11 @@ export function BookSearch({ onBack }: BookSearchProps): ReactNode {
       </box>
 
       <InputBox
-        placeholder="Type book title..."
+        placeholder="Type book title... (Press 'i' to type)"
         value={query}
         onInput={setQuery}
         onSubmit={handleSearch}
-        focused={selectedIndex === -1}
+        focused={isSearchMode}
         width={60}
       />
 
@@ -148,7 +170,7 @@ export function BookSearch({ onBack }: BookSearchProps): ReactNode {
 
       {hasSearched && results.length > 0 && (
         <text fg={COLORS.TEXT_DIM} marginTop={1}>
-          Use Arrows to navigate grid. Enter to view details. [ q ] to return.
+          [i] Insert Mode | [ESC] Normal Mode | [h/j/k/l] Navigate | [q] Quit
         </text>
       )}
     </box>
