@@ -166,6 +166,26 @@ export class DatabaseService {
     };
   }
 
+  public getAllBooks(): Book[] {
+    const query = this.db.prepare("SELECT * FROM books");
+    const results = query.all();
+
+    return (results as unknown[]).filter(isBookRow).map((result) => ({
+      id: result.id,
+      legacyId: result.legacy_id ? Number(result.legacy_id) : undefined,
+      title: result.title,
+      titleComplete: result.title_complete || undefined,
+      author: result.author || undefined,
+      description: result.description || undefined,
+      averageRating: result.average_rating || undefined,
+      pageCount: result.page_count || undefined,
+      language: result.language || undefined,
+      format: result.format || undefined,
+      coverImage: result.cover_image || undefined,
+      updatedAt: result.updated_at,
+    }));
+  }
+
   public getEditions(legacyId: string | number, language?: string): Edition[] {
     let sql = "SELECT * FROM editions WHERE book_legacy_id = ?";
     const params: (string | number)[] = [String(legacyId)];
