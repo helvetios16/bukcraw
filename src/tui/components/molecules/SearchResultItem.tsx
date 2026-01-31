@@ -1,4 +1,4 @@
-import type { JSX } from "react";
+import type { ReactNode } from "react";
 import { COLORS } from "../../../config/tui-colors";
 
 export interface SearchResultItemProps {
@@ -13,7 +13,7 @@ export function SearchResultItem({
   author,
   year,
   isSelected = false,
-}: SearchResultItemProps): JSX.Element {
+}: SearchResultItemProps): ReactNode {
   return (
     <box
       width="100%"
@@ -23,7 +23,8 @@ export function SearchResultItem({
       borderColor={isSelected ? COLORS.PRIMARY : COLORS.SECONDARY}
       flexDirection="row"
       justifyContent="space-between"
-      paddingX={1}
+      paddingLeft={1}
+      paddingRight={1}
     >
       <box flexDirection="column">
         <text fg={isSelected ? COLORS.TEXT_BRIGHT : COLORS.TEXT}>{title}</text>
