@@ -6,12 +6,14 @@ import { MOCK_BOOKS } from "../../../mocks/books/data";
 import type { Book } from "../../../types";
 import { InputBox } from "../atoms/InputBox";
 import { SectionHeader } from "../atoms/SectionHeader";
-import { SearchResultItem } from "../molecules/SearchResultItem";
+import { BookCard } from "../molecules/BookCard";
 import { BookDetails } from "./BookDetails";
 
 interface BookSearchProps {
   readonly onBack: () => void;
 }
+
+const COLUMNS = 3;
 
 export function BookSearch({ onBack }: BookSearchProps): ReactNode {
   const [query, setQuery] = useState("");
@@ -54,10 +56,21 @@ export function BookSearch({ onBack }: BookSearchProps): ReactNode {
       return;
     }
 
-    if (key.name === "down") {
+    if (selectedIndex === -1) {
+      if (key.name === "down" || key.name === "right") {
+        setSelectedIndex(0);
+      }
+      return;
+    }
+
+    if (key.name === "right") {
       setSelectedIndex((prev) => (prev < results.length - 1 ? prev + 1 : prev));
+    } else if (key.name === "left") {
+      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : prev));
+    } else if (key.name === "down") {
+      setSelectedIndex((prev) => (prev + COLUMNS < results.length ? prev + COLUMNS : prev));
     } else if (key.name === "up") {
-      setSelectedIndex((prev) => (prev > -1 ? prev - 1 : -1));
+      setSelectedIndex((prev) => (prev - COLUMNS >= 0 ? prev - COLUMNS : -1));
     } else if (key.name === "return" || key.name === "enter") {
       if (selectedIndex >= 0 && selectedIndex < results.length) {
         const book = results[selectedIndex];
@@ -82,7 +95,7 @@ export function BookSearch({ onBack }: BookSearchProps): ReactNode {
       width="100%"
       height="100%"
       alignItems="center"
-      justifyContent={hasSearched ? "flex-start" : "center"}
+      justifyContent={hasSearched && results.length > 0 ? "flex-start" : "center"}
       padding={1}
     >
       <box flexDirection="column" alignItems="center" marginBottom={2}>
@@ -101,20 +114,18 @@ export function BookSearch({ onBack }: BookSearchProps): ReactNode {
         width={60}
       />
 
-      {/* Results List */}
+      {/* Results Grid */}
       {hasSearched && (
         <box
-          flexDirection="column"
+          flexDirection="row"
+          flexWrap="wrap"
           marginTop={2}
-          width={70}
-          height={15}
-          border={true}
-          borderStyle="rounded"
-          borderColor={COLORS.SECONDARY}
+          width={100} // Approximate width for 3 columns of width 30 + margins
+          justifyContent="center"
         >
           {results.length > 0 ? (
             results.map((book, index) => (
-              <SearchResultItem
+              <BookCard
                 key={book.id}
                 title={book.title}
                 author={book.author || "Unknown"}
@@ -123,8 +134,8 @@ export function BookSearch({ onBack }: BookSearchProps): ReactNode {
               />
             ))
           ) : (
-            <box width="100%" justifyContent="center">
-              <text fg={COLORS.WARNING}>No books found.</text>
+            <box width="100%" justifyContent="center" marginTop={2}>
+              <text fg={COLORS.WARNING}>No books found matching your query.</text>
             </box>
           )}
         </box>
@@ -132,7 +143,7 @@ export function BookSearch({ onBack }: BookSearchProps): ReactNode {
 
       {hasSearched && results.length > 0 && (
         <text fg={COLORS.TEXT_DIM} marginTop={1}>
-          Use ↓/↑ to navigate results. Enter to view details.
+          Use Arrows to navigate grid. Enter to view details.
         </text>
       )}
     </box>
