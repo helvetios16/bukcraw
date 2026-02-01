@@ -119,22 +119,26 @@ export function BookSearch({ onBack }: BookSearchProps): ReactNode {
 
   return (
     <box flexDirection="column" width="100%" height="100%">
-      {/* Main Content Area */}
+      {/* Top Area: Header and Status Info (pinned to bottom of this top space, just above input) */}
       <box
         flexGrow={1}
         flexDirection="column"
         alignItems="center"
-        justifyContent={hasSearched && results.length > 0 ? "flex-start" : "center"}
+        justifyContent="flex-end"
+        paddingBottom={1}
       >
-        <box flexDirection="column" alignItems="center" marginBottom={2}>
-          <SectionHeader title="SEARCH BOOK" />
+        <box width={60} flexDirection="column" alignItems="center">
+          <SectionHeader title="SEARCH BOOK" align="center" />
           <text fg={COLORS.TEXT_DIM}>
             {hasSearched
               ? `Found ${results.length} results for "${query}"`
               : "Enter title to search"}
           </text>
         </box>
+      </box>
 
+      {/* Center Area: InputBox (The vertical anchor) */}
+      <box width="100%" alignItems="center">
         <InputBox
           placeholder="Type book title... (Press 'i' to type)"
           value={query}
@@ -143,16 +147,12 @@ export function BookSearch({ onBack }: BookSearchProps): ReactNode {
           focused={isSearchMode}
           width={60}
         />
+      </box>
 
-        {/* Results Grid */}
+      {/* Bottom Area: Results Grid (starts below input) */}
+      <box flexGrow={1} flexDirection="column" alignItems="center" paddingTop={2}>
         {hasSearched && (
-          <box
-            flexDirection="row"
-            flexWrap="wrap"
-            marginTop={2}
-            width={100} // Approximate width for 3 columns of width 30 + margins
-            justifyContent="center"
-          >
+          <box flexDirection="row" flexWrap="wrap" width={100} justifyContent="center">
             {results.length > 0 ? (
               results.map((book, index) => (
                 <BookCard
@@ -164,7 +164,7 @@ export function BookSearch({ onBack }: BookSearchProps): ReactNode {
                 />
               ))
             ) : (
-              <box width="100%" justifyContent="center" marginTop={2}>
+              <box width="100%" justifyContent="center">
                 <text fg={COLORS.WARNING}>No books found matching your query.</text>
               </box>
             )}
