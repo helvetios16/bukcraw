@@ -2,8 +2,8 @@ import { useKeyboard } from "@opentui/react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { APP_TITLE } from "../../../config/constants";
-import { COLORS } from "../../../config/tui-colors";
 import { MenuItem } from "../atoms/MenuItem";
+import { ScreenFooter } from "../atoms/ScreenFooter";
 import { SectionHeader } from "../atoms/SectionHeader";
 
 export interface MenuOption {
@@ -43,16 +43,23 @@ export function MainMenu({ options, onSelect, onQuit }: MainMenuProps): ReactNod
   });
 
   return (
-    <box flexDirection="column" alignItems="center" width="100%">
-      <SectionHeader title={APP_TITLE} />
-      <box flexDirection="column" rowGap={1} marginTop={1} alignItems="center">
-        {options.map((item, index) => (
-          <MenuItem key={item.value} label={item.label} isSelected={index === selectedIndex} />
-        ))}
+    <box
+      flexDirection="column"
+      alignItems="center"
+      width="100%"
+      height="100%"
+      justifyContent="center"
+    >
+      <box flexDirection="column" alignItems="center">
+        <SectionHeader title={APP_TITLE} />
+        <box flexDirection="column" rowGap={1} marginTop={1} alignItems="center">
+          {options.map((item, index) => (
+            <MenuItem key={item.value} label={item.label} isSelected={index === selectedIndex} />
+          ))}
+        </box>
       </box>
-      <box marginTop={2} paddingLeft={1} paddingRight={1}>
-        <text fg={COLORS.TEXT_DIM}>Use ↑/↓ to navigate, Enter to select, 'q' to quit.</text>
-      </box>
+
+      <ScreenFooter>Use ↑/↓ or j/k to navigate, Enter to select, 'q' to quit.</ScreenFooter>
     </box>
   );
 }

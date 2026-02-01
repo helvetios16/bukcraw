@@ -5,6 +5,7 @@ import { COLORS } from "../../../config/tui-colors";
 import { MOCK_BOOKS } from "../../../mocks/books/data";
 import type { Book } from "../../../types";
 import { InputBox } from "../atoms/InputBox";
+import { ScreenFooter } from "../atoms/ScreenFooter";
 import { SectionHeader } from "../atoms/SectionHeader";
 import { BookCard } from "../molecules/BookCard";
 import { BookDetails } from "./BookDetails";
@@ -117,62 +118,64 @@ export function BookSearch({ onBack }: BookSearchProps): ReactNode {
   }
 
   return (
-    <box
-      flexDirection="column"
-      width="100%"
-      height="100%"
-      alignItems="center"
-      justifyContent={hasSearched && results.length > 0 ? "flex-start" : "center"}
-      padding={1}
-    >
-      <box flexDirection="column" alignItems="center" marginBottom={2}>
-        <SectionHeader title="SEARCH BOOK" />
-        <text fg={COLORS.TEXT_DIM}>
-          {hasSearched ? `Found ${results.length} results for "${query}"` : "Enter title to search"}
-        </text>
+    <box flexDirection="column" width="100%" height="100%">
+      {/* Main Content Area */}
+      <box
+        flexGrow={1}
+        flexDirection="column"
+        alignItems="center"
+        justifyContent={hasSearched && results.length > 0 ? "flex-start" : "center"}
+      >
+        <box flexDirection="column" alignItems="center" marginBottom={2}>
+          <SectionHeader title="SEARCH BOOK" />
+          <text fg={COLORS.TEXT_DIM}>
+            {hasSearched
+              ? `Found ${results.length} results for "${query}"`
+              : "Enter title to search"}
+          </text>
+        </box>
+
+        <InputBox
+          placeholder="Type book title... (Press 'i' to type)"
+          value={query}
+          onInput={setQuery}
+          onSubmit={handleSearch}
+          focused={isSearchMode}
+          width={60}
+        />
+
+        {/* Results Grid */}
+        {hasSearched && (
+          <box
+            flexDirection="row"
+            flexWrap="wrap"
+            marginTop={2}
+            width={100} // Approximate width for 3 columns of width 30 + margins
+            justifyContent="center"
+          >
+            {results.length > 0 ? (
+              results.map((book, index) => (
+                <BookCard
+                  key={book.id}
+                  title={book.title}
+                  author={book.author || "Unknown"}
+                  year={book.updatedAt ? new Date(book.updatedAt).getFullYear().toString() : "N/A"}
+                  isSelected={index === selectedIndex}
+                />
+              ))
+            ) : (
+              <box width="100%" justifyContent="center" marginTop={2}>
+                <text fg={COLORS.WARNING}>No books found matching your query.</text>
+              </box>
+            )}
+          </box>
+        )}
       </box>
 
-      <InputBox
-        placeholder="Type book title... (Press 'i' to type)"
-        value={query}
-        onInput={setQuery}
-        onSubmit={handleSearch}
-        focused={isSearchMode}
-        width={60}
-      />
-
-      {/* Results Grid */}
-      {hasSearched && (
-        <box
-          flexDirection="row"
-          flexWrap="wrap"
-          marginTop={2}
-          width={100} // Approximate width for 3 columns of width 30 + margins
-          justifyContent="center"
-        >
-          {results.length > 0 ? (
-            results.map((book, index) => (
-              <BookCard
-                key={book.id}
-                title={book.title}
-                author={book.author || "Unknown"}
-                year={book.updatedAt ? new Date(book.updatedAt).getFullYear().toString() : "N/A"}
-                isSelected={index === selectedIndex}
-              />
-            ))
-          ) : (
-            <box width="100%" justifyContent="center" marginTop={2}>
-              <text fg={COLORS.WARNING}>No books found matching your query.</text>
-            </box>
-          )}
-        </box>
-      )}
-
-      {hasSearched && results.length > 0 && (
-        <text fg={COLORS.TEXT_DIM} marginTop={1}>
-          [i] Insert Mode | [ESC] Normal Mode | [h/j/k/l] Navigate | [q] Quit
-        </text>
-      )}
+      {/* Footer Legend */}
+      <ScreenFooter>
+        [i] Insert Mode | [ESC] Normal Mode | [h/j/k/l] Navigate | [q] Quit
+      </ScreenFooter>
     </box>
   );
 }
