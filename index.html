@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizador de Reportes de Libros</title>
+    <!-- Tailwind CSS v4 Browser Engine -->
+    <script src="https://unpkg.com/@tailwindcss/browser@4"></script>
+    <script>
+        // Inyectamos la configuración de Tailwind 4 dinámicamente para evitar errores del linter de CSS
+        const style = document.createElement('style');
+        style.type = 'text/tailwindcss';
+        style.textContent = `
+            @theme {
+                --dark-mode: selector(.dark);
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+    <style type="text/css">
+        :root {
+            color-scheme: dark;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 min-h-screen p-4 md:p-8 text-gray-200">
+    <div class="max-w-7xl mx-auto">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl font-bold text-white mb-2">📚 Reportes de Libros</h1>
+            <p id="bookCountContainer" class="text-lg text-gray-400 hidden">
+                Mostrando: <span id="bookCount" class="font-semibold text-indigo-400">0</span> de <span id="totalCount" class="font-semibold text-gray-300">0</span> libros
+            </p>
+        </header>
+
+        <div class="bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-700 mb-10 flex flex-col md:flex-row justify-center items-center gap-6">
+            <div class="flex flex-col md:flex-row items-center gap-4">
+                <label for="fileInput" class="font-medium text-gray-300">Seleccionar reporte JSON:</label>
+                <input type="file" id="fileInput" accept=".json" class="block w-full md:w-auto text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-900/30 file:text-indigo-300 hover:file:bg-indigo-900/50 border border-gray-600 rounded-lg p-1">
+            </div>
+            
+            <div class="flex items-center gap-3">
+                <input type="checkbox" id="filterEditions" class="w-5 h-5 rounded border-gray-600 bg-gray-700 text-indigo-500 focus:ring-indigo-600 focus:ring-offset-gray-800 cursor-pointer">
+                <label for="filterEditions" class="font-medium text-gray-300 cursor-pointer select-none">Solo con ediciones</label>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <label for="minBlogs" class="font-medium text-gray-300">Mencionado en:</label>
+                <select id="minBlogs" class="bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2">
+                    <option value="0">Cualquier cantidad</option>
+                    <option value="1">1 o más blogs</option>
+                    <option value="2">2 o más blogs</option>
+                    <option value="3">3 o más blogs</option>
+                    <option value="4">4 o más blogs</option>
+                    <option value="5">5 o más blogs</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="bookGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+            <!-- Los libros se cargarán aquí -->
+        </div>
+
+        <div id="errorMessage" class="text-red-400 text-center mt-10 font-medium"></div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const filterEditions = document.getElementById('filterEditions');
+        const minBlogsSelect = document.getElementById('minBlogs');
+        const bookGrid = document.getElementById('bookGrid');
+        const errorMessage = document.getElementById('errorMessage');
+        const bookCountContainer = document.getElementById('bookCountContainer');
+        const bookCountSpan = document.getElementById('bookCount');
+        const totalCountSpan = document.getElementById('totalCount');
+
+        let allBooks = [];
+
+        // Manejo de carga de archivos
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) { return; }
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    allBooks = JSON.parse(event.target.result);
+                    renderBooks();
+                    errorMessage.textContent = '';
+                } catch (err) {
+                    console.error('Error al parsear JSON:', err);
+                    errorMessage.textContent = `Error al leer el archivo JSON: ${err.message}`;
+                    bookGrid.innerHTML = '';
+                    bookCountContainer.classList.add('hidden');
+                    allBooks = [];
+                }
+            };
+            reader.onerror = () => {
+                errorMessage.textContent = 'Error al leer el archivo del disco.';
+            };
+            reader.readAsText(file);
+        });
+
+        // Manejo de filtros
+        [filterEditions, minBlogsSelect].forEach(el => {
+            el.addEventListener('change', renderBooks);
+        });
+
+        function renderBooks() {
+            bookGrid.innerHTML = '';
+            
+            if (!Array.isArray(allBooks)) {
+                errorMessage.textContent = 'El archivo no contiene un array de libros válido.';
+                bookCountContainer.classList.add('hidden');
+                return;
+            }
+
+            const onlyWithEditions = filterEditions.checked;
+            const minBlogs = parseInt(minBlogsSelect.value) || 0;
+
+            const filteredBooks = allBooks.filter(book => {
+                // Filtro de ediciones
+                const passEditions = !onlyWithEditions || (Array.isArray(book.editionsFound) && book.editionsFound.length > 0);
+                
+                // Filtro de cantidad de blogs
+                const blogCount = Array.isArray(book.blogs) ? book.blogs.length : (book.sourceBlogId ? 1 : 0);
+                const passBlogs = blogCount >= minBlogs;
+
+                return passEditions && passBlogs;
+            });
+
+            bookCountSpan.textContent = filteredBooks.length;
+            totalCountSpan.textContent = allBooks.length;
+            bookCountContainer.classList.remove('hidden');
+
+            const fragment = document.createDocumentFragment();
+
+            filteredBooks.forEach(book => {
+                const card = document.createElement('div');
+                card.className = 'bg-gray-800 rounded-lg shadow-md border border-gray-700 overflow-hidden hover:shadow-lg hover:shadow-indigo-900/20 transition-all duration-300 flex flex-col relative';
+                
+                const coverUrl = book.coverImage || 'https://via.placeholder.com/200x300?text=Sin+Portada';
+                const editionsCount = Array.isArray(book.editionsFound) ? book.editionsFound.length : 0;
+                
+                // Manejar blogs (formato nuevo vs antiguo)
+                let blogsHtml = '';
+                if (Array.isArray(book.blogs) && book.blogs.length > 0) {
+                    blogsHtml = `
+                        <div class="mt-2 flex flex-wrap gap-1">
+                            ${book.blogs.map(blog => `
+                                <span class="text-[9px] bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded border border-gray-600 truncate max-w-full" title="${blog.title}">
+                                    ${blog.title}
+                                </span>
+                            `).join('')}
+                        </div>
+                    `;
+                } else if (book.sourceBlogId) {
+                    blogsHtml = `
+                        <div class="mt-2">
+                            <span class="text-[9px] bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded border border-gray-600">
+                                Blog: ${book.sourceBlogId}
+                            </span>
+                        </div>
+                    `;
+                }
+
+                card.innerHTML = `
+                    <div class="aspect-[2/3] w-full overflow-hidden bg-gray-700">
+                        <img src="${coverUrl}" alt="${book.title || 'Libro'}" class="w-full h-full object-cover" loading="lazy" onerror="this.src='https://via.placeholder.com/200x300?text=Error+Img'">
+                        ${editionsCount > 0 ? `
+                            <div class="absolute top-2 right-2 bg-indigo-600 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-lg">
+                                ${editionsCount} EDICIONES
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="p-3 flex-grow flex flex-col">
+                        <h2 class="text-sm font-bold line-clamp-2 text-white leading-tight mb-1" title="${book.title || ''}">${book.title || 'Sin título'}</h2>
+                        <p class="text-xs text-gray-400 truncate">${book.author || 'Autor desconocido'}</p>
+                        ${blogsHtml}
+                    </div>
+                `;
+                
+                fragment.appendChild(card);
+            });
+
+            bookGrid.appendChild(fragment);
+
+            if (filteredBooks.length === 0 && allBooks.length > 0) {
+                bookGrid.innerHTML = '<div class="col-span-full text-center py-20 text-gray-500">No hay libros que coincidan con el filtro.</div>';
+            }
+        }
+    </script>
+</body>
+</html>
