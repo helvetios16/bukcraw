@@ -1,0 +1,23 @@
+description = "Analizar cambios y crear un commit"
+prompt = """
+Actúa como un ingeniero de software senior.
+Por favor, genera y ejecuta un commit para los cambios actuales (ya preparados en el stage).
+
+CONTEXTO DE REGLAS:
+Se debe seguir estrictamente la siguiente estructura y realizarlo en español:
+
+<tipo>(<alcance>): <resumen corto>
+  - <Detalle 1> ...
+
+ESTADO ACTUAL:
+!{git status}
+
+CAMBIOS DETALLADOS (Staged):
+!{git diff --staged}
+
+INSTRUCCIONES:
+1. Analiza los cambios en stage.
+2. Propón y ejecuta el commit con un mensaje descriptivo.
+3. NO hagas 'git add'.
+4. NO hagas 'git status' al final.
+"""
