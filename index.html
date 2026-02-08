@@ -115,7 +115,7 @@
             }
 
             const onlyWithEditions = filterEditions.checked;
-            const minBlogs = parseInt(minBlogsSelect.value) || 0;
+            const minBlogs = parseInt(minBlogsSelect.value, 10) || 0;
 
             const filteredBooks = allBooks.filter(book => {
                 // Filtro de ediciones

@@ -1,6 +1,6 @@
+import inquirer from "inquirer";
 import { DatabaseService } from "../src/core/database";
 import type { Book, Edition } from "../src/types";
-import inquirer from "inquirer";
 
 /**
  * Interface for the final book report item.
@@ -64,6 +64,16 @@ async function main(): Promise<void> {
       // Ordenar blogs alfabéticamente
       allBlogs.sort((a, b) => a.title.localeCompare(b.title));
 
+      // Vim navigation support (j/k)
+      const handleVimNavigation = (_ch: string, key: { name?: string }) => {
+        if (key?.name === "j") {
+          process.stdin.emit("keypress", null, { name: "down" });
+        } else if (key?.name === "k") {
+          process.stdin.emit("keypress", null, { name: "up" });
+        }
+      };
+      process.stdin.on("keypress", handleVimNavigation);
+
       const answer = await inquirer.prompt([
         {
           type: "checkbox",
@@ -78,6 +88,8 @@ async function main(): Promise<void> {
           loop: false,
         },
       ]);
+
+      process.stdin.removeListener("keypress", handleVimNavigation);
 
       targetBlogs = answer.selectedBlogs;
 
@@ -179,9 +191,7 @@ async function main(): Promise<void> {
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const finalOutputName =
-      output === "report-database-books.json"
-        ? `report-database-books-${timestamp}.json`
-        : output;
+      output === "report-database-books.json" ? `report-database-books-${timestamp}.json` : output;
 
     const fs = await import("node:fs");
     const path = await import("node:path");
