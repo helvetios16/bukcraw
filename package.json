@@ -7,12 +7,9 @@
     "start": "bun run index.ts",
     "tui": "bun run src/tui/dashboard/index.tsx",
     "cache:clear": "bun run scripts/clear-cache.ts",
-    "lint": "biome lint .",
-    "lint:fix": "biome lint --unsafe --write .",
-    "format": "biome format .",
-    "format:fix": "biome format --write .",
-    "check": "biome check .",
-    "check:fix": "biome check --unsafe --write ."
+    "lint": "biome lint --unsafe --write .",
+    "format": "biome format --write .",
+    "check": "biome check --unsafe --write ."
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.11",
