@@ -1,5 +1,5 @@
 // scripts/test-fetch.ts
-import { GOODREADS_URL, BOOK_URL, USER_AGENT } from "../src/config/constants";
+import { BOOK_URL, GOODREADS_URL, USER_AGENT } from "../src/config/constants";
 
 async function testFetch(bookId: string) {
   const url = `${GOODREADS_URL}${BOOK_URL}${bookId}`;
@@ -10,23 +10,27 @@ async function testFetch(bookId: string) {
       method: "GET",
       headers: {
         "User-Agent": USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,webp,application/json,*/*;q=0.8",
+        Accept:
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,webp,application/json,*/*;q=0.8",
         "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
         "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
+        Pragma: "no-cache",
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
         "Sec-Fetch-Site": "none",
         "Sec-Fetch-User": "?1",
-        "Upgrade-Insecure-Requests": "1"
-      }
+        "Upgrade-Insecure-Requests": "1",
+      },
     });
 
     console.log(`📊 Status: ${response.status} ${response.statusText}`);
 
     const html = await response.text();
     const hasNextData = html.includes('id="__NEXT_DATA__"');
-    const isCaptcha = html.toLowerCase().includes("captcha") || html.includes("robot") || html.includes("verify you are a human");
+    const isCaptcha =
+      html.toLowerCase().includes("captcha") ||
+      html.includes("robot") ||
+      html.includes("verify you are a human");
 
     if (isCaptcha) {
       console.log("❌ Detectado: Posible CAPTCHA o bloqueo de bot.");

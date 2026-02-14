@@ -72,9 +72,8 @@ async function main(): Promise<void> {
   const errors: { id: string; title: string; error: string }[] = [];
 
   try {
-    const page = await browserClient.launch();
-    page.setDefaultNavigationTimeout(60000);
-    const service = new GoodreadsService(page);
+    // Iniciamos el servicio con el cliente en lugar de la página lanzada
+    const service = new GoodreadsService(browserClient);
 
     // 1. Scrape del Blog
     console.log("\n📚 PASO 1: Analizando Blog...");

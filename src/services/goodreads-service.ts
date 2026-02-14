@@ -5,8 +5,10 @@
 
 import type { ElementHandle, Page } from "puppeteer";
 import { BLOG_URL, BOOK_URL, GOODREADS_URL, WORK_URL } from "../config/constants";
+import type { BrowserClient } from "../core/browser-client";
 import { CacheManager } from "../core/cache-manager";
 import { DatabaseService } from "../core/database";
+import { HttpClient } from "../core/http-client";
 import type { Blog, Book, BookFilterOptions, Edition } from "../types";
 import { delay, getErrorMessage, isValidBookId } from "../utils/util";
 import { parseBlogHtml } from "./blog-parser";
@@ -28,15 +30,18 @@ interface SaveEditionsParams {
 }
 
 export class GoodreadsService {
-  private readonly page: Page;
+  private page: Page | null = null;
+  private readonly browserClient?: BrowserClient;
   private readonly cache = new CacheManager();
   private readonly db = new DatabaseService();
+  private readonly http = new HttpClient();
 
-  constructor(page: Page) {
-    if (!page) {
-      throw new Error("Puppeteer Page instance is required.");
+  constructor(pageOrClient: Page | BrowserClient) {
+    if ("launch" in pageOrClient) {
+      this.browserClient = pageOrClient;
+    } else {
+      this.page = pageOrClient;
     }
-    this.page = page;
   }
 
   public async scrapeBook(id: string): Promise<Book | null> {
@@ -57,42 +62,32 @@ export class GoodreadsService {
     const url = `${GOODREADS_URL}${BOOK_URL}${id}`;
     console.log(`🔎 Buscando libro ${id}...`);
 
-    // 1. Intentar cargar desde File Cache (Level 2)
-    // Only if DB was miss or expired, we might fallback to file cache?
-    // Actually, if DB is expired, we probably want to refresh from Web unless File Cache is newer?
-    // For simplicity, if DB is expired, we skip File Cache check to force Web refresh
-    // OR we check File Cache validity too. The current structure checks File Cache if DB misses.
-    // If DB is expired, we proceed.
-
-    // We can skip file cache if we want fresh data, or check it.
-    // Let's stick to the flow: if DB miss/expired -> check File -> check Web.
-    // But verify File Cache validity? The current implementation of tryLoadBookFromFileCache doesn't check date.
-    // Assuming File Cache is just a backup for "offline" or "don't hammer server".
-    // I will proceed to Web if DB is expired.
-
-    // ... logic continues ...
-
     const fileBook = await this.tryLoadBookFromFileCache(url);
     if (fileBook) {
       return fileBook;
     }
 
-    // 2. Navegación Web (Level 3)
-    await this.navigateTo(url);
+    // 2. Navegación Híbrida (Level 3)
+    const { content, method } = await this.fetchContentWithFallback(url);
 
     let bookData: Book | null = null;
 
     // 3. Extracción de Datos (Next.js Data)
-    const nextDataElement = await this.page.$("#__NEXT_DATA__");
+    // Si usamos HTTP, parseamos el string. Si usamos Puppeteer, usamos la página.
+    if (method === "http") {
+      bookData = await this.processNextDataFromHtml(content, url);
+    } else if (this.page) {
+      const nextDataElement = await this.page.$("#__NEXT_DATA__");
+      if (nextDataElement) {
+        bookData = await this.processNextDataFromElement(nextDataElement, url);
+      }
+    }
 
-    if (nextDataElement) {
-      bookData = await this.processNextData(nextDataElement, url);
-    } else {
-      console.warn("! No se encontró la etiqueta #__NEXT_DATA__ en la página.");
+    if (!bookData) {
+      console.warn("! No se pudo extraer la información del libro.");
     }
 
     // 4. Guardar HTML como respaldo
-    const content = await this.page.content();
     await this.cache.save({ url, content, force: false, extension: ".html" });
 
     return bookData;
@@ -112,9 +107,7 @@ export class GoodreadsService {
       console.warn("ℹ️ Cache miss o error al leer caché de ediciones:", getErrorMessage(error));
     }
 
-    await this.navigateTo(url);
-
-    const content = await this.page.content();
+    const { content } = await this.fetchContentWithFallback(url);
     await this.cache.save({ url, content, force: false, extension: ".html" });
 
     console.log("⚙  Parseando filtros de ediciones...");
@@ -163,9 +156,7 @@ export class GoodreadsService {
       console.warn("ℹ️ Cache miss o error al leer caché de blog:", getErrorMessage(error));
     }
 
-    await this.navigateTo(url);
-
-    const content = await this.page.content();
+    const { content } = await this.fetchContentWithFallback(url);
     await this.cache.save({ url, content, force: false, extension: ".html" });
 
     console.log("⚙  Parseando contenido del blog...");
@@ -235,8 +226,57 @@ export class GoodreadsService {
 
   // --- Helper Methods ---
 
+  /**
+   * Hybrid content fetcher: tries HTTP first, falls back to Puppeteer if blocked.
+   */
+  private async fetchContentWithFallback(
+    url: string,
+  ): Promise<{ content: string; method: "http" | "browser" }> {
+    try {
+      console.log(`⚡ Intentando fetch HTTP rápido: ${url}`);
+      const content = await this.http.get(url);
+
+      if (!this.http.isBlocked(content)) {
+        console.log("✅ Fetch HTTP exitoso.");
+        return { content, method: "http" };
+      }
+
+      console.warn("⚠️ Fetch HTTP bloqueado (CAPTCHA detectado).");
+    } catch (error: unknown) {
+      console.warn(`❌ Error en fetch HTTP: ${getErrorMessage(error)}`);
+    }
+
+    console.log("🔄 Iniciando Plan B: Puppeteer fallback...");
+    await this.ensureBrowserPage();
+    if (!this.page) {
+      throw new Error("No se pudo inicializar Puppeteer para el fallback.");
+    }
+
+    await this.navigateTo(url);
+    const content = await this.page.content();
+    return { content, method: "browser" };
+  }
+
+  private async ensureBrowserPage(): Promise<void> {
+    if (this.page) {
+      return;
+    }
+
+    if (!this.browserClient) {
+      throw new Error("Se requiere BrowserClient o Page para realizar el fallback a Puppeteer.");
+    }
+
+    console.log("🚀 Lanzando navegador bajo demanda...");
+    this.page = await this.browserClient.launch();
+    this.page.setDefaultNavigationTimeout(60000);
+  }
+
   private async navigateTo(url: string): Promise<void> {
-    console.log(`🌐 Navegando a Goodreads: ${url}`);
+    if (!this.page) {
+      throw new Error("Page instance is missing.");
+    }
+
+    console.log(`🌐 Navegando con Puppeteer: ${url}`);
     const response = await this.page.goto(url, { waitUntil: "domcontentloaded" });
 
     if (!response) {
@@ -245,7 +285,6 @@ export class GoodreadsService {
 
     const status = response.status();
     if (status === 404) {
-      // Log logic handled by caller usually, but throwing helps flow control
       console.error("❌ Recurso no encontrado (404).");
       return;
     }
@@ -259,7 +298,7 @@ export class GoodreadsService {
     }
 
     await this.page.waitForSelector("body");
-    console.log("✅ Página cargada correctamente.");
+    console.log("✅ Página cargada correctamente con Puppeteer.");
   }
 
   private async tryLoadBookFromFileCache(url: string): Promise<Book | null> {
@@ -280,14 +319,27 @@ export class GoodreadsService {
     return null;
   }
 
-  private async processNextData(element: ElementHandle, url: string): Promise<Book | null> {
-    const nextData = await this.page.evaluate((el) => el.textContent, element);
-    if (!nextData) {
+  private async processNextDataFromElement(
+    element: ElementHandle,
+    url: string,
+  ): Promise<Book | null> {
+    const nextData = await this.page?.evaluate((el) => el.textContent, element);
+    return this.handleNextDataJson(nextData, url);
+  }
+
+  private async processNextDataFromHtml(html: string, url: string): Promise<Book | null> {
+    // Regex simple para extraer el contenido de <script id="__NEXT_DATA__">...</script>
+    const match = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+    return this.handleNextDataJson(match ? match[1] : null, url);
+  }
+
+  private async handleNextDataJson(jsonStr: string | null, url: string): Promise<Book | null> {
+    if (!jsonStr) {
       return null;
     }
 
     try {
-      const parsedJson = JSON.parse(nextData);
+      const parsedJson = JSON.parse(jsonStr);
       await this.cache.save({
         url,
         content: JSON.stringify(parsedJson, null, 2),
@@ -400,19 +452,16 @@ export class GoodreadsService {
   }
 
   private async getPageContent(url: string): Promise<{ content: string; fromCache: boolean }> {
-    let content = await this.cache.get(url, ".html");
+    const content = await this.cache.get(url, ".html");
     if (content) {
       console.log(`📦 Cache hit página.`);
       return { content, fromCache: true };
     }
 
-    console.log(`🌐 Navegando a página: ${url}`);
-    await this.page.goto(url, { waitUntil: "domcontentloaded" });
-    await this.page.waitForSelector("body");
-    content = await this.page.content();
-    await this.cache.save({ url, content, force: true, extension: ".html" });
+    const { content: freshContent } = await this.fetchContentWithFallback(url);
+    await this.cache.save({ url, content: freshContent, force: true, extension: ".html" });
 
-    return { content, fromCache: false };
+    return { content: freshContent, fromCache: false };
   }
 
   private async saveEditionsResults(params: SaveEditionsParams): Promise<void> {
