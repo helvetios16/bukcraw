@@ -94,6 +94,30 @@ function isEditionRow(data: unknown): data is EditionRow {
   );
 }
 
+/**
+ * Represents a raw row from the 'sessions' table in SQLite.
+ */
+interface SessionRow {
+  readonly id: number;
+  readonly cookies: string;
+  readonly created_at: string;
+}
+
+/**
+ * Type guard for SessionRow.
+ */
+function isSessionRow(data: unknown): data is SessionRow {
+  const d = data as Record<string, unknown>;
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "cookies" in d &&
+    typeof d.cookies === "string" &&
+    "created_at" in d &&
+    typeof d.created_at === "string"
+  );
+}
+
 export class DatabaseService {
   private readonly db: Database;
 
@@ -104,6 +128,15 @@ export class DatabaseService {
 
   private init(): void {
     this.db.run("PRAGMA foreign_keys = ON;");
+
+    // 0. Tabla de Sesiones (Cookies)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        cookies TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
 
     // 1. Tabla de Libros
     this.db.run(`
@@ -250,7 +283,25 @@ export class DatabaseService {
     }));
   }
 
+  public getLatestSession(): { cookies: string; createdAt: string } | null {
+    const query = this.db.prepare("SELECT cookies, created_at FROM sessions ORDER BY created_at DESC LIMIT 1");
+    const result = query.get();
+
+    if (isSessionRow(result)) {
+      return {
+        cookies: result.cookies,
+        createdAt: result.created_at,
+      };
+    }
+    return null;
+  }
+
   // --- MÉTODOS DE ESCRITURA ---
+
+  public saveSession(cookies: string): void {
+    const query = this.db.prepare("INSERT INTO sessions (cookies) VALUES (?)");
+    query.run(cookies);
+  }
 
   public saveBook(book: Book): void {
     const query = this.db.prepare(`

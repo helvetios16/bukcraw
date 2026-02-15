@@ -34,7 +34,14 @@ export class GoodreadsService {
   private readonly browserClient?: BrowserClient;
   private readonly cache = new CacheManager();
   private readonly db = new DatabaseService();
-  private readonly http = new HttpClient();
+  private http: HttpClient | null = null;
+
+  // Métricas de telemetría
+  private stats = {
+    httpSuccess: 0,
+    browserFallback: 0,
+    cacheHits: 0,
+  };
 
   constructor(pageOrClient: Page | BrowserClient) {
     if ("launch" in pageOrClient) {
@@ -42,6 +49,55 @@ export class GoodreadsService {
     } else {
       this.page = pageOrClient;
     }
+  }
+
+  /**
+   * Initializes the service by ensuring a valid session (cookies) is available.
+   * If no valid session exists (< 20 mins), it launches the browser to get one.
+   */
+  public async initSession(): Promise<void> {
+    const latestSession = this.db.getLatestSession();
+
+    if (latestSession && this.isSessionFresh(latestSession.createdAt)) {
+      console.log("🔑 Usando sesión existente (cookies) de la base de datos.");
+      this.http = new HttpClient(latestSession.cookies);
+      return;
+    }
+
+    console.log("! No hay sesión válida o ha expirado (> 20 min). Obteniendo nuevas cookies...");
+
+    try {
+      await this.ensureBrowserPage();
+      if (!this.page) throw new Error("No se pudo iniciar el navegador.");
+
+      // Navegar a la home para obtener cookies frescas
+      console.log(`🌐 Obteniendo cookies desde ${GOODREADS_URL}...`);
+      await this.page.goto(GOODREADS_URL, { waitUntil: "domcontentloaded" });
+
+      const cookiesArr = await this.page.cookies();
+      const cookiesStr = cookiesArr.map((c) => `${c.name}=${c.value}`).join("; ");
+
+      if (!cookiesStr) {
+        throw new Error("No se obtuvieron cookies del navegador.");
+      }
+
+      this.db.saveSession(cookiesStr);
+      this.http = new HttpClient(cookiesStr);
+      console.log("✅ Nuevas cookies guardadas e inicializadas.");
+    } catch (error: unknown) {
+      console.error("❌ Error crítico inicializando sesión:", getErrorMessage(error));
+      throw new Error(
+        "FALLO_INICIALIZACION_SESION: No se pudo obtener una sesión válida de Goodreads.",
+      );
+    }
+  }
+
+  private isSessionFresh(createdAt: string): boolean {
+    const createdDate = new Date(createdAt);
+    const now = new Date();
+    const diffMs = now.getTime() - createdDate.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    return diffMins < 20;
   }
 
   public async scrapeBook(id: string): Promise<Book | null> {
@@ -54,9 +110,10 @@ export class GoodreadsService {
     if (dbBook) {
       if (this.isCacheValid(dbBook.updatedAt)) {
         console.log(`💾 DB Cache hit: Libro ${id} encontrado en base de datos.`);
+        this.stats.cacheHits++;
         return dbBook;
       }
-      console.log(`⚠️ DB Cache expired: Libro ${id} (updated: ${dbBook.updatedAt}). Re-scraping...`);
+      console.log(`! DB Cache expired: Libro ${id} (updated: ${dbBook.updatedAt}). Re-scraping...`);
     }
 
     const url = `${GOODREADS_URL}${BOOK_URL}${id}`;
@@ -104,7 +161,7 @@ export class GoodreadsService {
         return;
       }
     } catch (error: unknown) {
-      console.warn("ℹ️ Cache miss o error al leer caché de ediciones:", getErrorMessage(error));
+      console.warn("i Cache miss o error al leer caché de ediciones:", getErrorMessage(error));
     }
 
     const { content } = await this.fetchContentWithFallback(url);
@@ -153,7 +210,7 @@ export class GoodreadsService {
         return;
       }
     } catch (error: unknown) {
-      console.warn("ℹ️ Cache miss o error al leer caché de blog:", getErrorMessage(error));
+      console.warn("i Cache miss o error al leer caché de blog:", getErrorMessage(error));
     }
 
     const { content } = await this.fetchContentWithFallback(url);
@@ -232,21 +289,27 @@ export class GoodreadsService {
   private async fetchContentWithFallback(
     url: string,
   ): Promise<{ content: string; method: "http" | "browser" }> {
+    if (!this.http) {
+      await this.initSession();
+    }
+
     try {
       console.log(`⚡ Intentando fetch HTTP rápido: ${url}`);
-      const content = await this.http.get(url);
+      const content = await this.http!.get(url);
 
-      if (!this.http.isBlocked(content)) {
+      if (!this.http!.isBlocked(content)) {
         console.log("✅ Fetch HTTP exitoso.");
+        this.stats.httpSuccess++;
         return { content, method: "http" };
       }
 
-      console.warn("⚠️ Fetch HTTP bloqueado (CAPTCHA detectado).");
+      console.warn("! Fetch HTTP bloqueado (CAPTCHA detectado).");
     } catch (error: unknown) {
       console.warn(`❌ Error en fetch HTTP: ${getErrorMessage(error)}`);
     }
 
     console.log("🔄 Iniciando Plan B: Puppeteer fallback...");
+    this.stats.browserFallback++;
     await this.ensureBrowserPage();
     if (!this.page) {
       throw new Error("No se pudo inicializar Puppeteer para el fallback.");
@@ -255,6 +318,23 @@ export class GoodreadsService {
     await this.navigateTo(url);
     const content = await this.page.content();
     return { content, method: "browser" };
+  }
+
+  /**
+   * Prints a summary of the scraping efficiency.
+   */
+  public printTelemetry(): void {
+    const totalRequests = this.stats.httpSuccess + this.stats.browserFallback;
+    const efficiency =
+      totalRequests > 0 ? ((this.stats.httpSuccess / totalRequests) * 100).toFixed(1) : "0";
+
+    console.log("📊 REPORTE DE TELEMETRÍA");
+    console.log("=".repeat(40));
+    console.log(`🚀 Peticiones vía HTTP (⚡):    ${this.stats.httpSuccess}`);
+    console.log(`🐢 Fallbacks a Browser (Puppeteer): ${this.stats.browserFallback}`);
+    console.log(`📦 Cache Hits (Evitó Red):      ${this.stats.cacheHits}`);
+    console.log("-".repeat(40));
+    console.log(`📈 Eficiencia de Ahorro Browser:   ${efficiency}%`);
   }
 
   private async ensureBrowserPage(): Promise<void> {
@@ -306,6 +386,7 @@ export class GoodreadsService {
       const cachedData = await this.cache.get(url, ".json");
       if (cachedData) {
         console.log("📦 File Cache hit (JSON).");
+        this.stats.cacheHits++;
         const book = parseBookData(JSON.parse(cachedData));
         if (book) {
           this.db.saveBook(book);
@@ -369,7 +450,7 @@ export class GoodreadsService {
         return true;
       }
       console.log(
-        `⚠️ DB Cache expired: Ediciones para ${legacyId} (created: ${firstEdition.createdAt}). Re-scraping...`,
+        `! DB Cache expired: Ediciones para ${legacyId} (created: ${firstEdition.createdAt}). Re-scraping...`,
       );
     }
     return false;

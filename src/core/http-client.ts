@@ -22,20 +22,30 @@ interface RequestOptions {
  * Optimized for scraping Goodreads by mimicking browser headers.
  */
 export class HttpClient {
-  private readonly defaultHeaders: HttpHeaders = {
-    "User-Agent": USER_AGENT,
-    Accept:
-      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,webp,application/json,*/*;q=0.8",
-    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-    "Cache-Control": "no-cache",
-    Pragma: "no-cache",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-User": "?1",
-    "Upgrade-Insecure-Requests": "1",
-    Referer: "https://www.google.com/",
-  };
+  private readonly cookies: string;
+  private readonly defaultHeaders: HttpHeaders;
+
+  constructor(cookies = "") {
+    this.cookies = cookies;
+    this.defaultHeaders = {
+      "User-Agent": USER_AGENT,
+      Accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,webp,application/json,*/*;q=0.8",
+      "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
+      "Sec-Fetch-Dest": "document",
+      "Sec-Fetch-Mode": "navigate",
+      "Sec-Fetch-Site": "none",
+      "Sec-Fetch-User": "?1",
+      "Upgrade-Insecure-Requests": "1",
+      Referer: "https://www.google.com/",
+    };
+
+    if (this.cookies) {
+      this.defaultHeaders.Cookie = this.cookies;
+    }
+  }
 
   /**
    * Performs a GET request and returns the response body as text.

@@ -195,6 +195,9 @@ async function main(): Promise<void> {
         console.log(`   Error: ${err.error}`);
       });
     }
+
+    // Mostrar reporte de eficiencia al finalizar todo el flujo
+    service.printTelemetry();
   } catch (error: unknown) {
     const fatalMessage = error instanceof Error ? error.message : String(error);
     console.error("\n❌ Error fatal en el flujo de trabajo:", fatalMessage);

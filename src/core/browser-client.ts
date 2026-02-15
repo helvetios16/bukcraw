@@ -25,6 +25,7 @@ export class BrowserClient {
 
     const page = await this.browser.newPage();
     await this.applyAntiDetection(page);
+    await this.optimizePage(page);
 
     return page;
   }
@@ -39,6 +40,25 @@ export class BrowserClient {
       this.browser = null;
       console.log("✅ Browser closed!");
     }
+  }
+
+  /**
+   * Configures the page to block non-essential resources for faster scraping.
+   * @param page - The Puppeteer page to optimize.
+   */
+  private async optimizePage(page: Page): Promise<void> {
+    await page.setRequestInterception(true);
+
+    page.on("request", (request) => {
+      const resourceType = request.resourceType();
+      const blockedTypes = ["image", "stylesheet", "font", "media", "other"];
+
+      if (blockedTypes.includes(resourceType)) {
+        request.abort();
+      } else {
+        request.continue();
+      }
+    });
   }
 
   /**
