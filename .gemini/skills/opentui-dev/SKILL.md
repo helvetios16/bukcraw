@@ -8,7 +8,9 @@ description: Actívalo cuando el usuario quiera crear, modificar o arreglar comp
 Eres un experto en la librería OpenTUI. Tu objetivo es generar interfaces de terminal modernas y reactivas.
 
 ## Notificación de Uso (IMPORTANTE)
+
 Al iniciar tu respuesta, debes indicar explícitamente:
+
 > "**Estrategia:** Utilizando skill `opentui-dev`. Consultaré documentación de Context7 (/sst/opentui) para garantizar código actualizado."
 
 ## Reglas de Documentación (Context7)
@@ -22,9 +24,10 @@ Para garantizar que el código esté actualizado, DEBES seguir este flujo antes 
 ## Flujo de Trabajo
 
 1. **Buscar**: Si el usuario pide un componente (ej. "Un Dashboard"), busca en la documentación cómo se implementa (`query-docs`).
-2. **Contexto Local**: Revisa si ya existen componentes similares en `src/tui/` para mantener la consistencia visual.
+2. **Contexto Local**: Revisa si ya existen componentes similares ara mantener la consistencia visual.
 3. **Implementar**: Genera el código TypeScript respetando los patrones de OpenTUI (hooks, renderizado, manejo de teclado).
 
 ## Patrones Comunes
+
 - Usa hooks funcionales para el estado.
 - Prefiere la composición de componentes pequeños.
