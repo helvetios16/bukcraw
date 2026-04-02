@@ -19,32 +19,42 @@ interface BookReport extends Book {
 interface WorkflowArgs {
   blogId: string;
   language: string;
-  format: string;
+  formats: string[];
   sort: string;
 }
 
+const VALID_FORMATS = ["hardcover", "paperback", "ebook", "Kindle Edition", "audiobook"] as const;
+type ValidFormat = (typeof VALID_FORMATS)[number];
+
 /**
  * Parses command line arguments for the workflow.
- * @returns {WorkflowArgs} The parsed arguments.
+ * @returns {WorkflowArgs | null} The parsed arguments or null if --help was shown.
  */
-function parseArgs(): WorkflowArgs {
+function parseArgs(): WorkflowArgs | null {
   const args: string[] = process.argv.slice(2);
   const params: WorkflowArgs = {
     blogId: "",
     language: "spa",
-    format: "",
+    formats: [],
     sort: "num_ratings",
   };
 
   for (const arg of args) {
-    if (arg.startsWith("--blogId=")) {
-      params.blogId = arg.split("=")[1];
+    if (arg === "--help" || arg === "-h") {
+      printHelp();
+      return null;
+    } else if (arg.startsWith("--blogId=")) {
+      params.blogId = arg.split("=")[1] ?? "";
     } else if (arg.startsWith("--language=")) {
-      params.language = arg.split("=")[1];
+      params.language = arg.split("=")[1] ?? "spa";
     } else if (arg.startsWith("--format=")) {
-      params.format = arg.split("=")[1];
+      const formatValue = arg.split("=")[1] ?? "";
+      params.formats = formatValue
+        .split(",")
+        .map((f) => f.trim())
+        .filter(Boolean);
     } else if (arg.startsWith("--sort=")) {
-      params.sort = arg.split("=")[1];
+      params.sort = arg.split("=")[1] ?? "num_ratings";
     } else if (!arg.startsWith("--") && !params.blogId) {
       params.blogId = arg;
     }
@@ -53,17 +63,53 @@ function parseArgs(): WorkflowArgs {
   return params;
 }
 
+function printHelp(): void {
+  console.log(`
+Usage: bun run workflow-blog-to-editions.ts [options]
+
+Options:
+  --blogId=<id>       ID del blog de Goodreads (requerido)
+  --language=<code>   Código de idioma (default: spa)
+                      Ejemplos: spa, eng, por, ita, fra, deu, etc.
+  --format=<fmt>      Formato(s) del libro (opcional, separados por coma)
+                      Formatos válidos: ${VALID_FORMATS.join(", ")}
+  --sort=<orden>      Orden de las ediciones (default: num_ratings)
+                      Opciones: num_ratings, avg_rating, publish_date
+  --help, -h          Muestra esta ayuda
+
+Ejemplos:
+  bun run workflow-blog-to-editions.ts --blogId=12345
+  bun run workflow-blog-to-editions.ts 12345
+  bun run workflow-blog-to-editions.ts --blogId=12345 --language=eng --format=ebook
+  bun run workflow-blog-to-editions.ts --blogId=12345 --format=ebook,Kindle Edition
+`);
+}
+
 async function main(): Promise<void> {
-  const { blogId, language, format, sort } = parseArgs();
+  const args = parseArgs();
+
+  if (!args) {
+    return;
+  }
+
+  const { blogId, language, formats, sort } = args;
 
   if (!blogId) {
     console.error("❌ Error: Debes proporcionar un ID de blog.");
     process.exit(1);
   }
 
+  const invalidFormats = formats.filter((f) => !VALID_FORMATS.includes(f as ValidFormat));
+  if (invalidFormats.length > 0) {
+    console.error(
+      `❌ Error: Formato(s) '${invalidFormats.join(", ")}' no válido(s). Formatos válidos: ${VALID_FORMATS.join(", ")}`,
+    );
+    process.exit(1);
+  }
+
   console.log(`🚀 Iniciando flujo de trabajo para Blog ID: ${blogId}`);
   console.log(
-    `⚙  Filtros de edición: Idioma=${language}, Formato=${format || "Cualquiera"}, Sort=${sort}`,
+    `⚙  Filtros de edición: Idioma=${language}, Formato=${formats.join(", ") || "Cualquiera"}, Sort=${sort}`,
   );
 
   const browserClient = new BrowserClient();
@@ -72,8 +118,9 @@ async function main(): Promise<void> {
   const errors: { id: string; title: string; error: string }[] = [];
 
   try {
-    // Iniciamos el servicio con el cliente en lugar de la página lanzada
-    const service = new GoodreadsService(browserClient);
+    const page = await browserClient.launch();
+    page.setDefaultNavigationTimeout(60000);
+    const service = new GoodreadsService(page);
 
     // 1. Scrape del Blog
     console.log("\n📚 PASO 1: Analizando Blog...");
@@ -128,36 +175,46 @@ async function main(): Promise<void> {
         // Scrape Filtros (Metadata)
         await service.scrapeEditionsFilters(legacyId);
 
-        // Scrape Ediciones Filtradas
-        const filterOptions: BookFilterOptions = {
-          language: language,
-          sort: sort,
-          format: format || undefined,
-        };
+        // Scrape Ediciones Filtradas (por cada formato si se especifican varios)
+        const formatsToProcess = formats.length > 0 ? formats : [undefined];
+        const allEditions: Edition[] = [];
 
-        await service.scrapeFilteredEditions(legacyId, filterOptions);
+        for (const format of formatsToProcess) {
+          const filterOptions: BookFilterOptions = {
+            language: language,
+            sort: sort,
+            format: format,
+          };
 
-        // Recuperar ediciones guardadas en caché
-        const query = new URLSearchParams();
-        query.append("utf8", "✓");
-        query.append("sort", sort);
-        if (format) {
-          query.append("filter_by_format", format);
+          await service.scrapeFilteredEditions(legacyId, filterOptions);
+
+          // Recuperar ediciones guardadas en caché
+          const query = new URLSearchParams();
+          query.append("utf8", "✓");
+          query.append("sort", sort);
+          if (format) {
+            query.append("filter_by_format", format);
+          }
+          if (language) {
+            query.append("filter_by_language", language);
+          }
+
+          const editionsUrlKey = `${GOODREADS_URL}${WORK_URL}${legacyId}?${query.toString()}`;
+          const editionsJson = await cache.get(editionsUrlKey, "-editions.json");
+
+          if (editionsJson) {
+            const editions: Edition[] = JSON.parse(editionsJson);
+            allEditions.push(...editions);
+          }
         }
-        if (language) {
-          query.append("filter_by_language", language);
-        }
 
-        const editionsUrlKey = `${GOODREADS_URL}${WORK_URL}${legacyId}?${query.toString()}`;
-        const editionsJson = await cache.get(editionsUrlKey, "-editions.json");
+        // Deduplicate editions by link
+        const uniqueEditions = allEditions.filter(
+          (edition, index, self) => index === self.findIndex((e) => e.link === edition.link),
+        );
 
-        if (editionsJson) {
-          const editions: Edition[] = JSON.parse(editionsJson);
-          bookReportItem.editionsFound = editions;
-          console.log(`✅ ${editions.length} ediciones agregadas al reporte.`);
-        } else {
-          console.warn("! No se encontró el archivo de ediciones en caché.");
-        }
+        bookReportItem.editionsFound = uniqueEditions;
+        console.log(`✅ ${uniqueEditions.length} ediciones agregadas al reporte.`);
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         console.error(`❌ Error procesando libro ${bookRef.id}: ${errorMessage}`);
@@ -195,9 +252,6 @@ async function main(): Promise<void> {
         console.log(`   Error: ${err.error}`);
       });
     }
-
-    // Mostrar reporte de eficiencia al finalizar todo el flujo
-    service.printTelemetry();
   } catch (error: unknown) {
     const fatalMessage = error instanceof Error ? error.message : String(error);
     console.error("\n❌ Error fatal en el flujo de trabajo:", fatalMessage);
