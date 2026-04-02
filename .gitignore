@@ -51,3 +51,5 @@ docs-*/
 
 # Gemini
 # .gemini/
+
+.claude/*.local.json

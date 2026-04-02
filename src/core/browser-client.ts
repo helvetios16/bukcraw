@@ -19,9 +19,8 @@ export class BrowserClient {
       throw new Error("Browser is already launched.");
     }
 
-    console.log("🚀 Starting browser...");
+    console.log("Starting browser...");
     this.browser = await puppeteer.launch(PUPPETEER_LAUNCH_OPTIONS);
-    console.log("✅ Browser started!");
 
     const page = await this.browser.newPage();
     await this.applyAntiDetection(page);
@@ -35,10 +34,9 @@ export class BrowserClient {
    */
   public async close(): Promise<void> {
     if (this.browser) {
-      console.log("🚪 Closing browser...");
+      console.log("Closing browser...");
       await this.browser.close();
       this.browser = null;
-      console.log("✅ Browser closed!");
     }
   }
 

@@ -67,11 +67,8 @@ export class CacheManager {
     const file = Bun.file(filename);
 
     if (!force && (await file.exists())) {
-      console.log(`✓ Cache hit: ${url}${extension}`);
       return filename;
     }
-
-    console.log(`↓ Cache: ${url}${extension}`);
 
     await Bun.write(file, content);
 

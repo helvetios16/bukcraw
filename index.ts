@@ -10,41 +10,42 @@ import { getErrorMessage } from "./src/utils/util";
 async function main(): Promise<void> {
   const browserClient = new BrowserClient();
   try {
-    const bookId = "241039381-the-last-contract-of-isako";
     const blogId = "3046-8-new-books-recommended-by-readers-this-week";
 
-    // Iniciamos el servicio directamente con el cliente.
-    // El navegador NO se lanzará a menos que sea estrictamente necesario (Fallback).
     const goodreadsService = new GoodreadsService(browserClient);
 
-    console.log("--- 1. PRUEBA DE BLOG ---");
-    await goodreadsService.scrapeBlog(blogId);
-    console.log("✅ Blog procesado.");
+    console.log("--- 1. Scraping blog ---");
+    const blog = await goodreadsService.scrapeBlog(blogId);
 
-    console.log("\n--- 2. PRUEBA DE LIBRO INDIVIDUAL ---");
-    const book = await goodreadsService.scrapeBook(bookId);
+    const books = blog?.mentionedBooks ?? [];
+    if (books.length === 0) {
+      console.log("No books found in blog.");
+      return;
+    }
 
-    if (book?.legacyId) {
-      console.log(`📚 Libro encontrado: ${book.title} (Legacy ID: ${book.legacyId})`);
+    console.log(`\n--- 2. Scraping ${books.length} books from blog ---`);
+    for (const mentionedBook of books) {
+      const book = await goodreadsService.scrapeBook(mentionedBook.id);
+      if (!book?.legacyId) {
+        continue;
+      }
 
-      console.log("\n--- 3. PRUEBA DE EDICIONES FILTRADAS (SPA + EBOOK) ---");
+      console.log(`  ${book.title} (${book.pageCount ?? "?"} pages)`);
+
       await goodreadsService.scrapeEditionsFilters(book.legacyId);
 
-      await goodreadsService.scrapeFilteredEditions(book.legacyId, {
-        language: "spa",
-        format: "Kindle Edition",
-      });
-      console.log("✅ Ediciones filtradas procesadas.");
-    } else {
-      console.log("! No se pudo extraer la información del libro o no tiene Legacy ID.");
+      for (const format of ["Kindle Edition", "ebook"]) {
+        await goodreadsService.scrapeFilteredEditions(book.legacyId, {
+          language: "spa",
+          format,
+        });
+      }
     }
   } catch (error: unknown) {
     const message = getErrorMessage(error);
-    console.error("❌ Ocurrió un error durante el proceso de scraping:", message);
+    console.error("Scraping error:", message);
   } finally {
-    // browserClient.close() solo cerrará el navegador si llegó a abrirse.
     await browserClient.close();
-    console.log("\n✨ Todas las pruebas completadas.");
   }
 }
 
