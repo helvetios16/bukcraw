@@ -2,6 +2,16 @@ import inquirer from "inquirer";
 import { DatabaseService } from "../src/core/database";
 import type { Book, Edition } from "../src/types";
 
+const ansi = (color: string) => Bun.color(color, "ansi-16m") ?? "";
+const c = {
+  heading: ansi("#7ec8e3"),
+  success: ansi("#81c784"),
+  warn: ansi("#ffb74d"),
+  error: ansi("#e57373"),
+  dim: ansi("#9e9e9e"),
+  reset: "\x1b[0m",
+};
+
 /**
  * Interface for the final book report item.
  */
@@ -62,20 +72,16 @@ async function main(): Promise<void> {
   const dbService = new DatabaseService();
 
   try {
-    // Si no se pasaron blogs por argumento, preguntar interactivamente
     if (targetBlogs.length === 0) {
-      console.log("🔍 Buscando blogs disponibles en la base de datos...");
       const allBlogs = dbService.getAllBlogs();
 
       if (allBlogs.length === 0) {
-        console.error("❌ No se encontraron blogs en la base de datos.");
+        console.error(`${c.error}No blogs found in database.${c.reset}`);
         return;
       }
 
-      // Ordenar blogs alfabéticamente
       allBlogs.sort((a, b) => a.title.localeCompare(b.title));
 
-      // Vim navigation support (j/k)
       const handleVimNavigation = (_ch: string, key: { name?: string }) => {
         if (key?.name === "j") {
           process.stdin.emit("keypress", null, { name: "down" });
@@ -89,11 +95,11 @@ async function main(): Promise<void> {
         {
           type: "checkbox",
           name: "selectedBlogs",
-          message: "Selecciona los blogs que deseas incluir en el reporte:",
+          message: "Select blogs to include in the report:",
           choices: allBlogs.map((blog) => ({
             name: `${blog.title} (${blog.id})`,
             value: blog.id,
-            checked: true, // Por defecto todos seleccionados, usuario puede deseleccionar
+            checked: true,
           })),
           pageSize: 20,
           loop: false,
@@ -105,23 +111,16 @@ async function main(): Promise<void> {
       targetBlogs = answer.selectedBlogs;
 
       if (targetBlogs.length === 0) {
-        console.log("⚠️ Ningún blog seleccionado. Generando reporte de TODOS los libros...");
+        console.log(`${c.warn}No blogs selected. Generating report for ALL books...${c.reset}`);
       }
     }
 
-    console.log(`🚀 Iniciando generación de reporte...`);
-    if (language) {
-      console.log(`⚙  Filtro de idioma: ${language}`);
-    }
-    if (targetBlogs.length > 0) {
-      console.log(`⚙  Blogs seleccionados (${targetBlogs.length}): ${targetBlogs.join(", ")}`);
-    }
+    console.log(`${c.heading}Report${c.reset} ${c.dim}| lang=${language || "all"} blogs=${targetBlogs.length || "all"}${c.reset}`);
 
     const db = dbService.getDb();
     const booksByCanonicalKey = new Map<string, BookReport>();
 
-    // 1. Obtener relaciones blog-libro
-    console.log("\n📚 PASO 1: Recuperando relaciones...");
+    console.log(`\n${c.heading}--- 1. Fetching relations ---${c.reset}`);
 
     let querySql = `
       SELECT bb.book_id, b.id as blog_id, b.title as blog_title, b.url as blog_url
@@ -144,11 +143,8 @@ async function main(): Promise<void> {
       blog_url: string;
     }[];
 
-    // Agrupar relaciones por book_id
     const blogsByBookId = new Map<string, { id: string; title: string; url: string }[]>();
     for (const rel of allBlogRelations) {
-      // Normalizar ID: Extraer solo la parte numérica inicial (ej: "123-titulo" -> "123")
-      // Esto es necesario porque blog_books guarda el slug completo pero la tabla books solo el ID numérico
       const normalizedBookId = rel.book_id.match(/^\d+/)?.[0] || rel.book_id;
 
       if (!blogsByBookId.has(normalizedBookId)) {
@@ -161,11 +157,9 @@ async function main(): Promise<void> {
       });
     }
 
-    // 2. Obtener libros y filtrar
-    console.log("\n📖 PASO 2: Procesando libros y ediciones...");
+    console.log(`\n${c.heading}--- 2. Processing books ---${c.reset}`);
     const allBooks = dbService.getAllBooks();
 
-    // Filtrar libros: Si hay blogs seleccionados, solo mostrar los que tengan relación con esos blogs
     const filteredBooks =
       targetBlogs.length > 0
         ? allBooks.filter((b) => {
@@ -175,7 +169,7 @@ async function main(): Promise<void> {
         : allBooks;
 
     if (targetBlogs.length > 0 && filteredBooks.length === 0) {
-      console.warn("! No se encontraron libros para los blogs seleccionados.");
+      console.warn(`${c.warn}No books found for selected blogs.${c.reset}`);
     }
 
     for (const [index, book] of filteredBooks.entries()) {
@@ -183,8 +177,6 @@ async function main(): Promise<void> {
         process.stdout.write(`Procesando... ${index}/${filteredBooks.length}\r`);
       }
 
-      // Canonical Key: Normalized Title + Author
-      // Normalize: lowercase, remove special characters
       const canonicalTitle = book.title
         .toLowerCase()
         .normalize("NFD")
@@ -202,7 +194,6 @@ async function main(): Promise<void> {
       const normalizedBookId = book.id.match(/^\d+/)?.[0] || book.id;
       const relatedBlogs = blogsByBookId.get(normalizedBookId) || [];
 
-      // Obtener ediciones (filtrando por idioma si es necesario)
       let editions: Edition[] = [];
       if (book.legacyId) {
         editions = dbService.getEditions(book.legacyId, language || undefined);
@@ -211,21 +202,18 @@ async function main(): Promise<void> {
       if (booksByCanonicalKey.has(canonicalKey)) {
         const existingReport = booksByCanonicalKey.get(canonicalKey)!;
 
-        // Merge blogs (avoiding duplicates)
         for (const blog of relatedBlogs) {
           if (!existingReport.blogs.some((b) => b.id === blog.id)) {
             existingReport.blogs.push(blog);
           }
         }
 
-        // Merge editions (avoiding duplicates by link)
         for (const edition of editions) {
           if (!existingReport.editionsFound.some((e) => e.link === edition.link)) {
             existingReport.editionsFound.push(edition);
           }
         }
 
-        // If current book has more info (e.g. description), update it
         if (!existingReport.description && book.description) {
           existingReport.description = book.description;
         }
@@ -241,7 +229,6 @@ async function main(): Promise<void> {
 
     const finalBooks = Array.from(booksByCanonicalKey.values());
 
-    // Extraer blogs únicos presentes en el reporte para el filtro
     const blogsInReport = new Map<string, { id: string; title: string; url: string }>();
     for (const book of finalBooks) {
       for (const blog of book.blogs) {
@@ -258,10 +245,7 @@ async function main(): Promise<void> {
       books: finalBooks,
     };
 
-    console.log(`\n✅ Procesamiento completado.`);
-
-    // 3. Generar JSON Final
-    console.log("\n💾 PASO 3: Guardando reporte final...");
+    console.log(`\n${c.heading}--- 3. Saving report ---${c.reset}`);
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const finalOutputName =
@@ -273,14 +257,11 @@ async function main(): Promise<void> {
 
     fs.writeFileSync(finalPath, JSON.stringify(finalReport, null, 2));
 
-    console.log(`🎉 Reporte guardado exitosamente en: ${finalPath}`);
-    console.log(`📊 Total libros reportados: ${finalReport.books.length}`);
-    console.log(
-      `📚 Libros con ediciones encontradas: ${finalReport.books.filter((b) => b.editionsFound.length > 0).length}`,
-    );
+    const withEditions = finalReport.books.filter((b) => b.editionsFound.length > 0).length;
+    console.log(`${c.success}Done.${c.reset} ${withEditions}/${finalReport.books.length} books with editions. ${c.dim}${finalPath}${c.reset}`);
   } catch (error: unknown) {
     const fatalMessage = error instanceof Error ? error.message : String(error);
-    console.error("\n❌ Error fatal generando el reporte:", fatalMessage);
+    console.error(`\n${c.error}Fatal error:${c.reset} ${fatalMessage}`);
   } finally {
     dbService.close();
   }

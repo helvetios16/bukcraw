@@ -238,12 +238,13 @@ export class GoodreadsService {
   public async scrapeFilteredEditions(
     legacyId: string | number,
     options: BookFilterOptions,
-  ): Promise<void> {
+  ): Promise<Edition[]> {
     const baseUrl = `${GOODREADS_URL}${WORK_URL}${legacyId}`;
 
     // 0. Check DB Cache
-    if (this.checkEditionsDbCache(legacyId, options.language)) {
-      return;
+    const dbEditions = this.getEditionsFromDbCache(legacyId, options.language);
+    if (dbEditions) {
+      return dbEditions;
     }
 
     // 1. Validate filters
@@ -256,7 +257,7 @@ export class GoodreadsService {
     const { allEditions, scrapedUrls, totalPages } =
       await this.processEditionsPagination(baseUrlWithParams);
 
-    // 4. Guardar resultados
+    // 4. Save results
     await this.saveEditionsResults({
       baseUrl: baseUrlWithParams,
       legacyId,
@@ -265,6 +266,8 @@ export class GoodreadsService {
       totalPages,
       options,
     });
+
+    return allEditions;
   }
 
   // --- Helper Methods ---
@@ -415,18 +418,17 @@ export class GoodreadsService {
     }
   }
 
-  private checkEditionsDbCache(legacyId: string | number, language?: string): boolean {
+  private getEditionsFromDbCache(legacyId: string | number, language?: string): Edition[] | null {
     const dbEditions = this.db.getEditions(legacyId, language);
     const firstEdition = dbEditions?.[0];
 
     if (dbEditions && dbEditions.length > 0 && firstEdition) {
-      // Check freshness of the first edition
       if (this.isCacheValid(firstEdition.createdAt)) {
         console.log(`DB cache hit: ${dbEditions.length} editions found.`);
-        return true;
+        return dbEditions;
       }
     }
-    return false;
+    return null;
   }
 
   private async validateFilters(

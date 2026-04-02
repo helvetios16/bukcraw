@@ -1,8 +1,16 @@
-import { BLOG_URL, GOODREADS_URL, WORK_URL } from "../src/config/constants";
 import { BrowserClient } from "../src/core/browser-client";
-import { CacheManager } from "../src/core/cache-manager";
 import { GoodreadsService } from "../src/services/goodreads-service";
-import type { Blog, Book, BookFilterOptions, Edition } from "../src/types";
+import type { Book, BookFilterOptions, Edition } from "../src/types";
+
+const ansi = (color: string) => Bun.color(color, "ansi-16m") ?? "";
+const c = {
+  heading: ansi("#7ec8e3"),
+  success: ansi("#81c784"),
+  warn: ansi("#ffb74d"),
+  error: ansi("#e57373"),
+  dim: ansi("#9e9e9e"),
+  reset: "\x1b[0m",
+};
 
 /**
  * Interface for the final book report item.
@@ -35,7 +43,7 @@ function parseArgs(): WorkflowArgs | null {
   const params: WorkflowArgs = {
     blogId: "",
     language: "spa",
-    formats: [],
+    formats: ["ebook", "Kindle Edition"],
     sort: "num_ratings",
   };
 
@@ -68,16 +76,16 @@ function printHelp(): void {
 Usage: bun run workflow-blog-to-editions.ts [options]
 
 Options:
-  --blogId=<id>       ID del blog de Goodreads (requerido)
-  --language=<code>   Código de idioma (default: spa)
-                      Ejemplos: spa, eng, por, ita, fra, deu, etc.
-  --format=<fmt>      Formato(s) del libro (opcional, separados por coma)
-                      Formatos válidos: ${VALID_FORMATS.join(", ")}
-  --sort=<orden>      Orden de las ediciones (default: num_ratings)
-                      Opciones: num_ratings, avg_rating, publish_date
-  --help, -h          Muestra esta ayuda
+  --blogId=<id>       Goodreads blog ID (required)
+  --language=<code>   Language code (default: spa)
+                      Examples: spa, eng, por, ita, fra, deu
+  --format=<fmt>      Book format(s), comma-separated (optional)
+                      Valid: ${VALID_FORMATS.join(", ")}
+  --sort=<order>      Edition sort order (default: num_ratings)
+                      Options: num_ratings, avg_rating, publish_date
+  --help, -h          Show this help
 
-Ejemplos:
+Examples:
   bun run workflow-blog-to-editions.ts --blogId=12345
   bun run workflow-blog-to-editions.ts 12345
   bun run workflow-blog-to-editions.ts --blogId=12345 --language=eng --format=ebook
@@ -95,57 +103,42 @@ async function main(): Promise<void> {
   const { blogId, language, formats, sort } = args;
 
   if (!blogId) {
-    console.error("❌ Error: Debes proporcionar un ID de blog.");
+    console.error(`${c.error}Error: Blog ID is required.${c.reset}`);
     process.exit(1);
   }
 
   const invalidFormats = formats.filter((f) => !VALID_FORMATS.includes(f as ValidFormat));
   if (invalidFormats.length > 0) {
     console.error(
-      `❌ Error: Formato(s) '${invalidFormats.join(", ")}' no válido(s). Formatos válidos: ${VALID_FORMATS.join(", ")}`,
+      `${c.error}Error: Invalid format(s) '${invalidFormats.join(", ")}'. Valid: ${VALID_FORMATS.join(", ")}${c.reset}`,
     );
     process.exit(1);
   }
 
-  console.log(`🚀 Iniciando flujo de trabajo para Blog ID: ${blogId}`);
-  console.log(
-    `⚙  Filtros de edición: Idioma=${language}, Formato=${formats.join(", ") || "Cualquiera"}, Sort=${sort}`,
-  );
+  console.log(`${c.heading}Blog ${blogId}${c.reset} ${c.dim}| lang=${language} format=${formats.join(",") || "any"} sort=${sort}${c.reset}`);
 
   const browserClient = new BrowserClient();
-  const cache = new CacheManager();
   const finalReport: BookReport[] = [];
   const errors: { id: string; title: string; error: string }[] = [];
 
   try {
-    const page = await browserClient.launch();
-    page.setDefaultNavigationTimeout(60000);
-    const service = new GoodreadsService(page);
+    const service = new GoodreadsService(browserClient);
 
-    // 1. Scrape del Blog
-    console.log("\n📚 PASO 1: Analizando Blog...");
-    await service.scrapeBlog(blogId);
+    console.log(`\n${c.heading}--- 1. Scraping blog ---${c.reset}`);
+    const blogData = await service.scrapeBlog(blogId);
 
-    const blogUrl = `${GOODREADS_URL}${BLOG_URL}${blogId}`;
-    const blogDataJson = await cache.get(blogUrl, "-parsed.json");
-
-    if (!blogDataJson) {
-      throw new Error("❌ No se pudieron recuperar los datos del blog de la caché.");
+    if (!blogData) {
+      throw new Error("Failed to retrieve blog data.");
     }
 
-    const blogData: Blog = JSON.parse(blogDataJson);
     const books: (Book & { section?: string })[] = blogData.mentionedBooks || [];
 
-    console.log(`✅ Blog analizado. Se encontraron ${books.length} libros mencionados.`);
+    console.log(`${c.success}${books.length} books found.${c.reset}`);
 
-    // 2. Procesar cada libro
-    console.log("\n📖 PASO 2: Procesando libros y buscando ediciones...");
+    console.log(`\n${c.heading}--- 2. Processing books ---${c.reset}`);
 
     for (const [index, bookRef] of books.entries()) {
-      console.log(`\n---------------------------------------------------------`);
-      console.log(
-        `Processing Book ${index + 1}/${books.length}: ID ${bookRef.id} - "${bookRef.title || "Desconocido"}"`,
-      );
+      console.log(`\n${c.dim}[${index + 1}/${books.length}]${c.reset} ${bookRef.title || bookRef.id}`);
 
       const bookReportItem: BookReport = {
         ...bookRef,
@@ -154,74 +147,47 @@ async function main(): Promise<void> {
       };
 
       try {
-        // Scrape del libro
         const bookDetails = await service.scrapeBook(bookRef.id);
 
         if (!bookDetails) {
-          throw new Error(`No se pudieron obtener detalles para el libro ${bookRef.id}`);
+          throw new Error(`Failed to get details for book ${bookRef.id}`);
         }
 
-        // Actualizar info del libro con datos más detallados
         Object.assign(bookReportItem, bookDetails);
 
         if (!bookDetails.legacyId) {
-          throw new Error("No se encontró Legacy ID (Work ID)");
+          throw new Error("Legacy ID (Work ID) not found");
         }
 
         const legacyId = bookDetails.legacyId;
-        console.log(`🔹 Work ID encontrado: ${legacyId}`);
-        console.log(`🔍 Buscando ediciones en idioma '${language}'...`);
 
-        // Scrape Filtros (Metadata)
         await service.scrapeEditionsFilters(legacyId);
 
-        // Scrape Ediciones Filtradas (por cada formato si se especifican varios)
         const formatsToProcess = formats.length > 0 ? formats : [undefined];
         const allEditions: Edition[] = [];
 
         for (const format of formatsToProcess) {
-          const filterOptions: BookFilterOptions = {
-            language: language,
-            sort: sort,
-            format: format,
-          };
-
-          await service.scrapeFilteredEditions(legacyId, filterOptions);
-
-          // Recuperar ediciones guardadas en caché
-          const query = new URLSearchParams();
-          query.append("utf8", "✓");
-          query.append("sort", sort);
-          if (format) {
-            query.append("filter_by_format", format);
-          }
-          if (language) {
-            query.append("filter_by_language", language);
-          }
-
-          const editionsUrlKey = `${GOODREADS_URL}${WORK_URL}${legacyId}?${query.toString()}`;
-          const editionsJson = await cache.get(editionsUrlKey, "-editions.json");
-
-          if (editionsJson) {
-            const editions: Edition[] = JSON.parse(editionsJson);
-            allEditions.push(...editions);
-          }
+          const filterOptions: BookFilterOptions = { language, sort, format };
+          const editions = await service.scrapeFilteredEditions(legacyId, filterOptions);
+          allEditions.push(...editions);
         }
 
-        // Deduplicate editions by link
-        const uniqueEditions = allEditions.filter(
-          (edition, index, self) => index === self.findIndex((e) => e.link === edition.link),
-        );
+        const seen = new Set<string>();
+        const uniqueEditions = allEditions.filter((e) => {
+          if (seen.has(e.link)) return false;
+          seen.add(e.link);
+          return true;
+        });
 
         bookReportItem.editionsFound = uniqueEditions;
-        console.log(`✅ ${uniqueEditions.length} ediciones agregadas al reporte.`);
+        console.log(`  ${c.success}${uniqueEditions.length} editions found.${c.reset}`);
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
-        console.error(`❌ Error procesando libro ${bookRef.id}: ${errorMessage}`);
+        console.warn(`  ${c.warn}Skipped:${c.reset} ${c.dim}${errorMessage}${c.reset}`);
         bookReportItem.processingError = errorMessage;
         errors.push({
           id: bookRef.id,
-          title: bookRef.title || "Desconocido",
+          title: bookRef.title || "Unknown",
           error: errorMessage,
         });
       } finally {
@@ -229,8 +195,7 @@ async function main(): Promise<void> {
       }
     }
 
-    // 3. Generar JSON Final
-    console.log("\n💾 PASO 3: Guardando reporte final...");
+    console.log(`\n${c.heading}--- 3. Saving report ---${c.reset}`);
     const reportFilename = `report-${blogId}-${language}.json`;
 
     const fs = await import("node:fs");
@@ -239,22 +204,22 @@ async function main(): Promise<void> {
 
     fs.writeFileSync(finalPath, JSON.stringify(finalReport, null, 2));
 
-    console.log(`🎉 Reporte guardado exitosamente en: ${finalPath}`);
-    console.log(`📊 Total libros procesados: ${finalReport.length}`);
-    console.log(
-      `📚 Libros con ediciones encontradas: ${finalReport.filter((b) => b.editionsFound.length > 0).length}`,
-    );
+    const withEditions = finalReport.filter((b) => b.editionsFound.length > 0).length;
+    console.log(`${c.success}Done.${c.reset} ${withEditions}/${finalReport.length} books with editions. ${c.dim}${finalPath}${c.reset}`);
 
     if (errors.length > 0) {
-      console.log("\n!  RESUMEN DE ERRORES:");
-      errors.forEach((err, idx) => {
-        console.log(`${idx + 1}. [${err.id}] ${err.title}`);
-        console.log(`   Error: ${err.error}`);
-      });
+      console.log(`\n${c.warn}${errors.length} error(s):${c.reset}`);
+      const grouped = Map.groupBy(errors, (err) => err.error);
+      for (const [reason, items] of grouped) {
+        console.log(`\n  ${c.dim}${reason}${c.reset} ${c.warn}(${items.length})${c.reset}`);
+        for (const err of items) {
+          console.log(`    ${c.dim}-${c.reset} ${err.title}`);
+        }
+      }
     }
   } catch (error: unknown) {
     const fatalMessage = error instanceof Error ? error.message : String(error);
-    console.error("\n❌ Error fatal en el flujo de trabajo:", fatalMessage);
+    console.error(`\n${c.error}Fatal error:${c.reset} ${fatalMessage}`);
   } finally {
     await browserClient.close();
   }
