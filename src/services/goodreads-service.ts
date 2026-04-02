@@ -68,7 +68,9 @@ export class GoodreadsService {
 
     try {
       await this.ensureBrowserPage();
-      if (!this.page) throw new Error("No se pudo iniciar el navegador.");
+      if (!this.page) {
+        throw new Error("No se pudo iniciar el navegador.");
+      }
 
       // Navegar a la home para obtener cookies frescas
       console.log(`🌐 Obteniendo cookies desde ${GOODREADS_URL}...`);
@@ -295,9 +297,9 @@ export class GoodreadsService {
 
     try {
       console.log(`⚡ Intentando fetch HTTP rápido: ${url}`);
-      const content = await this.http!.get(url);
+      const content = await this.http?.get(url);
 
-      if (!this.http!.isBlocked(content)) {
+      if (!this.http?.isBlocked(content)) {
         console.log("✅ Fetch HTTP exitoso.");
         this.stats.httpSuccess++;
         return { content, method: "http" };

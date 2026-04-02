@@ -284,7 +284,9 @@ export class DatabaseService {
   }
 
   public getLatestSession(): { cookies: string; createdAt: string } | null {
-    const query = this.db.prepare("SELECT cookies, created_at FROM sessions ORDER BY created_at DESC LIMIT 1");
+    const query = this.db.prepare(
+      "SELECT cookies, created_at FROM sessions ORDER BY created_at DESC LIMIT 1",
+    );
     const result = query.get();
 
     if (isSessionRow(result)) {

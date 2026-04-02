@@ -20,6 +20,16 @@ interface ReportArgs {
 }
 
 /**
+ * Interface for the final exported report structure.
+ */
+interface FinalReportOutput {
+  generatedAt: string;
+  count: number;
+  blogs: { id: string; title: string; url: string }[];
+  books: BookReport[];
+}
+
+/**
  * Parses command line arguments for the workflow.
  * @returns {ReportArgs} The parsed arguments.
  */
@@ -33,11 +43,12 @@ function parseArgs(): ReportArgs {
 
   for (const arg of args) {
     if (arg.startsWith("--language=")) {
-      params.language = arg.split("=")[1];
+      params.language = arg.split("=")[1] ?? "";
     } else if (arg.startsWith("--output=")) {
-      params.output = arg.split("=")[1];
+      params.output = arg.split("=")[1] ?? "report-database-books.json";
     } else if (arg.startsWith("--blogs=")) {
-      params.blogs = arg.split("=")[1].split(",").filter(Boolean);
+      const blogsValue = arg.split("=")[1];
+      params.blogs = blogsValue ? blogsValue.split(",").filter(Boolean) : [];
     }
   }
 
@@ -107,7 +118,7 @@ async function main(): Promise<void> {
     }
 
     const db = dbService.getDb();
-    const finalReport: BookReport[] = [];
+    const booksByCanonicalKey = new Map<string, BookReport>();
 
     // 1. Obtener relaciones blog-libro
     console.log("\n📚 PASO 1: Recuperando relaciones...");
@@ -156,7 +167,12 @@ async function main(): Promise<void> {
 
     // Filtrar libros: Si hay blogs seleccionados, solo mostrar los que tengan relación con esos blogs
     const filteredBooks =
-      targetBlogs.length > 0 ? allBooks.filter((b) => blogsByBookId.has(b.id)) : allBooks;
+      targetBlogs.length > 0
+        ? allBooks.filter((b) => {
+            const normalizedId = b.id.match(/^\d+/)?.[0] || b.id;
+            return blogsByBookId.has(normalizedId);
+          })
+        : allBooks;
 
     if (targetBlogs.length > 0 && filteredBooks.length === 0) {
       console.warn("! No se encontraron libros para los blogs seleccionados.");
@@ -167,7 +183,24 @@ async function main(): Promise<void> {
         process.stdout.write(`Procesando... ${index}/${filteredBooks.length}\r`);
       }
 
-      const relatedBlogs = blogsByBookId.get(book.id) || [];
+      // Canonical Key: Normalized Title + Author
+      // Normalize: lowercase, remove special characters
+      const canonicalTitle = book.title
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "") // remove accents
+        .replace(/[^a-z0-9]/g, ""); // remove non-alphanumeric
+
+      const canonicalAuthor = (book.author || "Unknown")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]/g, "");
+
+      const canonicalKey = `${canonicalTitle}-${canonicalAuthor}`;
+
+      const normalizedBookId = book.id.match(/^\d+/)?.[0] || book.id;
+      const relatedBlogs = blogsByBookId.get(normalizedBookId) || [];
 
       // Obtener ediciones (filtrando por idioma si es necesario)
       let editions: Edition[] = [];
@@ -175,14 +208,55 @@ async function main(): Promise<void> {
         editions = dbService.getEditions(book.legacyId, language || undefined);
       }
 
-      const bookReportItem: BookReport = {
-        ...book,
-        blogs: relatedBlogs,
-        editionsFound: editions,
-      };
+      if (booksByCanonicalKey.has(canonicalKey)) {
+        const existingReport = booksByCanonicalKey.get(canonicalKey)!;
 
-      finalReport.push(bookReportItem);
+        // Merge blogs (avoiding duplicates)
+        for (const blog of relatedBlogs) {
+          if (!existingReport.blogs.some((b) => b.id === blog.id)) {
+            existingReport.blogs.push(blog);
+          }
+        }
+
+        // Merge editions (avoiding duplicates by link)
+        for (const edition of editions) {
+          if (!existingReport.editionsFound.some((e) => e.link === edition.link)) {
+            existingReport.editionsFound.push(edition);
+          }
+        }
+
+        // If current book has more info (e.g. description), update it
+        if (!existingReport.description && book.description) {
+          existingReport.description = book.description;
+        }
+      } else {
+        const bookReportItem: BookReport = {
+          ...book,
+          blogs: relatedBlogs,
+          editionsFound: editions,
+        };
+        booksByCanonicalKey.set(canonicalKey, bookReportItem);
+      }
     }
+
+    const finalBooks = Array.from(booksByCanonicalKey.values());
+
+    // Extraer blogs únicos presentes en el reporte para el filtro
+    const blogsInReport = new Map<string, { id: string; title: string; url: string }>();
+    for (const book of finalBooks) {
+      for (const blog of book.blogs) {
+        if (!blogsInReport.has(blog.id)) {
+          blogsInReport.set(blog.id, blog);
+        }
+      }
+    }
+
+    const finalReport: FinalReportOutput = {
+      generatedAt: new Date().toISOString(),
+      count: finalBooks.length,
+      blogs: Array.from(blogsInReport.values()).sort((a, b) => a.title.localeCompare(b.title)),
+      books: finalBooks,
+    };
 
     console.log(`\n✅ Procesamiento completado.`);
 
@@ -200,9 +274,9 @@ async function main(): Promise<void> {
     fs.writeFileSync(finalPath, JSON.stringify(finalReport, null, 2));
 
     console.log(`🎉 Reporte guardado exitosamente en: ${finalPath}`);
-    console.log(`📊 Total libros reportados: ${finalReport.length}`);
+    console.log(`📊 Total libros reportados: ${finalReport.books.length}`);
     console.log(
-      `📚 Libros con ediciones encontradas: ${finalReport.filter((b) => b.editionsFound.length > 0).length}`,
+      `📚 Libros con ediciones encontradas: ${finalReport.books.filter((b) => b.editionsFound.length > 0).length}`,
     );
   } catch (error: unknown) {
     const fatalMessage = error instanceof Error ? error.message : String(error);
