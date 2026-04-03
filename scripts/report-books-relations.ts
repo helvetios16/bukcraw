@@ -115,7 +115,9 @@ async function main(): Promise<void> {
       }
     }
 
-    console.log(`${c.heading}Report${c.reset} ${c.dim}| lang=${language || "all"} blogs=${targetBlogs.length || "all"}${c.reset}`);
+    console.log(
+      `${c.heading}Report${c.reset} ${c.dim}| lang=${language || "all"} blogs=${targetBlogs.length || "all"}${c.reset}`,
+    );
 
     const db = dbService.getDb();
     const booksByCanonicalKey = new Map<string, BookReport>();
@@ -199,9 +201,8 @@ async function main(): Promise<void> {
         editions = dbService.getEditions(book.legacyId, language || undefined);
       }
 
-      if (booksByCanonicalKey.has(canonicalKey)) {
-        const existingReport = booksByCanonicalKey.get(canonicalKey)!;
-
+      const existingReport = booksByCanonicalKey.get(canonicalKey);
+      if (existingReport) {
         for (const blog of relatedBlogs) {
           if (!existingReport.blogs.some((b) => b.id === blog.id)) {
             existingReport.blogs.push(blog);
@@ -258,7 +259,9 @@ async function main(): Promise<void> {
     fs.writeFileSync(finalPath, JSON.stringify(finalReport, null, 2));
 
     const withEditions = finalReport.books.filter((b) => b.editionsFound.length > 0).length;
-    console.log(`${c.success}Done.${c.reset} ${withEditions}/${finalReport.books.length} books with editions. ${c.dim}${finalPath}${c.reset}`);
+    console.log(
+      `${c.success}Done.${c.reset} ${withEditions}/${finalReport.books.length} books with editions. ${c.dim}${finalPath}${c.reset}`,
+    );
   } catch (error: unknown) {
     const fatalMessage = error instanceof Error ? error.message : String(error);
     console.error(`\n${c.error}Fatal error:${c.reset} ${fatalMessage}`);

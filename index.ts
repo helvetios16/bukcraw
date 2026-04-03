@@ -41,7 +41,9 @@ async function main(): Promise<void> {
           continue;
         }
 
-        console.log(`  ${c.success}${book.title}${c.reset} ${c.dim}(${book.pageCount ?? "?"} pages)${c.reset}`);
+        console.log(
+          `  ${c.success}${book.title}${c.reset} ${c.dim}(${book.pageCount ?? "?"} pages)${c.reset}`,
+        );
 
         await goodreadsService.scrapeEditionsFilters(book.legacyId);
 
@@ -52,7 +54,9 @@ async function main(): Promise<void> {
           });
         }
       } catch (error: unknown) {
-        console.warn(`  ${c.warn}Skipped${c.reset} ${mentionedBook.id}: ${c.dim}${getErrorMessage(error)}${c.reset}`);
+        console.warn(
+          `  ${c.warn}Skipped${c.reset} ${mentionedBook.id}: ${c.dim}${getErrorMessage(error)}${c.reset}`,
+        );
       }
     }
   } catch (error: unknown) {

@@ -115,7 +115,9 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  console.log(`${c.heading}Blog ${blogId}${c.reset} ${c.dim}| lang=${language} format=${formats.join(",") || "any"} sort=${sort}${c.reset}`);
+  console.log(
+    `${c.heading}Blog ${blogId}${c.reset} ${c.dim}| lang=${language} format=${formats.join(",") || "any"} sort=${sort}${c.reset}`,
+  );
 
   const browserClient = new BrowserClient();
   const finalReport: BookReport[] = [];
@@ -138,7 +140,9 @@ async function main(): Promise<void> {
     console.log(`\n${c.heading}--- 2. Processing books ---${c.reset}`);
 
     for (const [index, bookRef] of books.entries()) {
-      console.log(`\n${c.dim}[${index + 1}/${books.length}]${c.reset} ${bookRef.title || bookRef.id}`);
+      console.log(
+        `\n${c.dim}[${index + 1}/${books.length}]${c.reset} ${bookRef.title || bookRef.id}`,
+      );
 
       const bookReportItem: BookReport = {
         ...bookRef,
@@ -174,7 +178,9 @@ async function main(): Promise<void> {
 
         const seen = new Set<string>();
         const uniqueEditions = allEditions.filter((e) => {
-          if (seen.has(e.link)) return false;
+          if (seen.has(e.link)) {
+            return false;
+          }
           seen.add(e.link);
           return true;
         });
@@ -205,7 +211,9 @@ async function main(): Promise<void> {
     fs.writeFileSync(finalPath, JSON.stringify(finalReport, null, 2));
 
     const withEditions = finalReport.filter((b) => b.editionsFound.length > 0).length;
-    console.log(`${c.success}Done.${c.reset} ${withEditions}/${finalReport.length} books with editions. ${c.dim}${finalPath}${c.reset}`);
+    console.log(
+      `${c.success}Done.${c.reset} ${withEditions}/${finalReport.length} books with editions. ${c.dim}${finalPath}${c.reset}`,
+    );
 
     if (errors.length > 0) {
       console.log(`\n${c.warn}${errors.length} error(s):${c.reset}`);
