@@ -170,6 +170,24 @@
         <!-- Book Grid -->
         <div id="bookGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-5"></div>
 
+        <!-- Pagination -->
+        <div id="paginationBar" class="hidden mt-6 flex flex-col items-center gap-3">
+            <div class="flex items-center gap-2">
+                <button id="prevPage" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">&laquo; Anterior</button>
+                <span id="pageInfo" class="text-sm text-gray-500 min-w-[100px] text-center"></span>
+                <button id="nextPage" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Siguiente &raquo;</button>
+            </div>
+            <div class="flex items-center gap-2">
+                <label for="pageSize" class="text-xs text-gray-600">Por pagina:</label>
+                <select id="pageSize" class="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded-lg px-2 py-1 outline-none">
+                    <option value="30">30</option>
+                    <option value="60" selected>60</option>
+                    <option value="120">120</option>
+                    <option value="0">Todos</option>
+                </select>
+            </div>
+        </div>
+
         <div id="errorMessage" class="text-red-400 text-center mt-10 font-medium"></div>
     </div>
 
@@ -263,6 +281,41 @@
         let allBooks = [];
         let availableBlogs = [];
         let searchDebounce = null;
+        let currentPage = 1;
+        let pageSize = 60;
+
+        const paginationBar = document.getElementById('paginationBar');
+        const prevPageBtn = document.getElementById('prevPage');
+        const nextPageBtn = document.getElementById('nextPage');
+        const pageInfoSpan = document.getElementById('pageInfo');
+        const pageSizeSelect = document.getElementById('pageSize');
+
+        prevPageBtn.addEventListener('click', () => { currentPage--; renderBooks(); });
+        nextPageBtn.addEventListener('click', () => { currentPage++; renderBooks(); });
+        pageSizeSelect.addEventListener('change', () => {
+            pageSize = parseInt(pageSizeSelect.value, 10);
+            currentPage = 1;
+            renderBooks();
+        });
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function sanitizeUrl(url) {
+            if (!url) return '';
+            try {
+                const parsed = new URL(url);
+                if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return url;
+            } catch {}
+            return '';
+        }
 
         // Drag & Drop
         ['dragenter', 'dragover'].forEach(evt => {
@@ -326,12 +379,12 @@
 
         // Filters
         [filterEditions, minBlogsSelect, blogSelect, sortOrderSelect].forEach(el => {
-            el.addEventListener('change', renderBooks);
+            el.addEventListener('change', () => { currentPage = 1; renderBooks(); });
         });
 
         searchInput.addEventListener('input', () => {
             clearTimeout(searchDebounce);
-            searchDebounce = setTimeout(renderBooks, 200);
+            searchDebounce = setTimeout(() => { currentPage = 1; renderBooks(); }, 200);
         });
 
         function populateBlogFilter() {
@@ -415,21 +468,39 @@
             totalCountSpan.textContent = allBooks.length;
             bookCountContainer.classList.remove('hidden');
 
+            // Pagination
+            const totalFiltered = filteredBooks.length;
+            let paginatedBooks = filteredBooks;
+
+            if (pageSize > 0) {
+                const totalPages = Math.ceil(totalFiltered / pageSize);
+                if (currentPage > totalPages) currentPage = totalPages || 1;
+                const start = (currentPage - 1) * pageSize;
+                paginatedBooks = filteredBooks.slice(start, start + pageSize);
+
+                prevPageBtn.disabled = currentPage <= 1;
+                nextPageBtn.disabled = currentPage >= totalPages;
+                pageInfoSpan.textContent = `${currentPage} / ${totalPages}`;
+                paginationBar.classList.toggle('hidden', totalPages <= 1);
+            } else {
+                paginationBar.classList.add('hidden');
+            }
+
             const fragment = document.createDocumentFragment();
 
-            filteredBooks.forEach(book => {
+            paginatedBooks.forEach(book => {
                 const card = document.createElement('div');
                 card.className = 'bg-gray-900 rounded-xl border border-gray-800 overflow-hidden hover:border-indigo-500/50 transition-all duration-300 flex flex-col relative cursor-pointer group';
                 card.addEventListener('click', () => showBookDetails(book));
 
-                const coverUrl = book.coverImage || '';
+                const coverUrl = sanitizeUrl(book.coverImage || '');
                 const editionsCount = Array.isArray(book.editionsFound) ? book.editionsFound.length : 0;
                 const rating = book.averageRating ? parseFloat(book.averageRating).toFixed(1) : null;
                 const pages = book.pageCount ? parseInt(book.pageCount, 10) : null;
                 const blogCount = Array.isArray(book.blogs) ? book.blogs.length : (book.sourceBlogId ? 1 : 0);
 
                 const coverHtml = coverUrl
-                    ? `<img src="${coverUrl}" alt="${book.title || 'Libro'}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'flex items-center justify-center h-full text-gray-600\\'>Sin portada</div>'">`
+                    ? `<img src="${escapeHtml(coverUrl)}" alt="${escapeHtml(book.title || 'Libro')}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy">`
                     : `<div class="flex items-center justify-center h-full text-gray-700 text-xs">Sin portada</div>`;
 
                 card.innerHTML = `
@@ -450,14 +521,21 @@
                         ` : ''}
                     </div>
                     <div class="p-2.5 flex-grow flex flex-col gap-1">
-                        <h2 class="text-xs font-bold line-clamp-2 text-white leading-snug group-hover:text-indigo-300 transition-colors" title="${book.title || ''}">${book.title || 'Sin titulo'}</h2>
-                        <p class="text-[11px] text-gray-500 truncate">${book.author || 'Autor desconocido'}</p>
+                        <h2 class="text-xs font-bold line-clamp-2 text-white leading-snug group-hover:text-indigo-300 transition-colors" title="${escapeHtml(book.title || '')}">${escapeHtml(book.title || 'Sin titulo')}</h2>
+                        <p class="text-[11px] text-gray-500 truncate">${escapeHtml(book.author || 'Autor desconocido')}</p>
                         <div class="mt-auto pt-1.5 flex items-center justify-between text-[10px] text-gray-600">
                             ${rating ? `<span class="text-yellow-500 font-semibold">${rating} ★</span>` : '<span></span>'}
                             ${pages ? `<span>${pages} pag.</span>` : ''}
                         </div>
                     </div>
                 `;
+
+                const cardImg = card.querySelector('img');
+                if (cardImg) {
+                    cardImg.addEventListener('error', function() {
+                        this.parentElement.innerHTML = '<div class="flex items-center justify-center h-full text-gray-600">Sin portada</div>';
+                    });
+                }
 
                 fragment.appendChild(card);
             });
@@ -479,7 +557,7 @@
         function showBookDetails(book) {
             modalTitle.textContent = book.titleComplete || book.title || 'Sin titulo';
             modalAuthor.textContent = book.author || 'Autor desconocido';
-            modalCover.src = book.coverImage || 'https://via.placeholder.com/200x300?text=Sin+Portada';
+            modalCover.src = sanitizeUrl(book.coverImage) || 'https://via.placeholder.com/200x300?text=Sin+Portada';
             modalCover.alt = book.title || 'Portada';
 
             modalRating.textContent = book.averageRating ? `${book.averageRating} ★` : 'N/A';
@@ -495,7 +573,7 @@
             if (bookBlogs.length > 0) {
                 bookBlogs.forEach(blog => {
                     const tag = document.createElement('a');
-                    tag.href = blog.url;
+                    tag.href = sanitizeUrl(blog.url);
                     tag.target = '_blank';
                     tag.className = 'text-xs bg-gray-800 hover:bg-indigo-900/60 text-gray-400 hover:text-white px-2.5 py-1 rounded-md border border-gray-700 transition-colors';
                     tag.textContent = blog.title;
@@ -515,12 +593,14 @@
                 editions.forEach(edition => {
                     const div = document.createElement('div');
                     div.className = 'flex gap-3 bg-gray-800/50 p-2.5 rounded-lg border border-gray-800 hover:border-indigo-500/30 transition-colors';
+                    const edCoverUrl = sanitizeUrl(edition.coverImage) || 'https://via.placeholder.com/50x75?text=Img';
+                    const edLink = edition.link ? `https://www.goodreads.com${escapeHtml(edition.link)}` : '#';
                     div.innerHTML = `
-                        <img src="${edition.coverImage || 'https://via.placeholder.com/50x75?text=Img'}" class="w-10 h-[60px] object-cover rounded shadow shadow-black/40" loading="lazy">
+                        <img src="${escapeHtml(edCoverUrl)}" class="w-10 h-[60px] object-cover rounded shadow shadow-black/40" loading="lazy">
                         <div class="flex-grow flex flex-col justify-center min-w-0">
-                            <h4 class="text-xs font-semibold text-gray-300 line-clamp-1">${edition.title}</h4>
-                            <p class="text-[11px] text-gray-500 mt-0.5">${edition.language} · ${edition.format || '?'} · ${edition.pages || '?'} pag.</p>
-                            <a href="https://www.goodreads.com${edition.link}" target="_blank" class="text-[10px] text-indigo-400 hover:text-indigo-300 underline mt-0.5 font-medium">Goodreads →</a>
+                            <h4 class="text-xs font-semibold text-gray-300 line-clamp-1">${escapeHtml(edition.title)}</h4>
+                            <p class="text-[11px] text-gray-500 mt-0.5">${escapeHtml(edition.language)} · ${escapeHtml(edition.format || '?')} · ${edition.pages || '?'} pag.</p>
+                            <a href="${escapeHtml(edLink)}" target="_blank" class="text-[10px] text-indigo-400 hover:text-indigo-300 underline mt-0.5 font-medium">Goodreads →</a>
                         </div>
                         <div class="flex items-center">
                             <span class="text-xs text-yellow-500 font-bold">${edition.averageRating || '—'} ★</span>
