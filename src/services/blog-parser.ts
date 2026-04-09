@@ -5,6 +5,66 @@
 
 import { parseHTML } from "linkedom";
 import type { Blog, Book } from "../types";
+import { Logger } from "../utils/logger";
+
+const log = new Logger("BlogParser");
+
+type BookWithSection = Book & { section?: string };
+
+/**
+ * Extracts a book ID from a Goodreads book href.
+ * @returns The full ID (e.g., "12345-title-slug") or null if not a valid book link.
+ */
+function extractBookIdFromHref(href: string | null | undefined): string | null {
+  if (!href?.includes("/book/show/")) {
+    return null;
+  }
+  const match = href.match(/\/book\/show\/([^?#]+)/);
+  return match?.[1] ?? null;
+}
+
+/**
+ * Builds a full Goodreads URL from a potentially relative href.
+ */
+function toFullUrl(href: string): string {
+  return href.startsWith("http") ? href : `https://www.goodreads.com${href}`;
+}
+
+/**
+ * Merges a new candidate's data into the last book if they share the same numeric ID.
+ * @returns true if merged, false if no merge occurred.
+ */
+function tryMergeWithLast(
+  books: BookWithSection[],
+  numericId: string,
+  update: Partial<BookWithSection>,
+  sectionCheck?: string,
+): boolean {
+  const lastBook = books[books.length - 1];
+  if (!lastBook) {
+    return false;
+  }
+  const lastNumericId = lastBook.id.split("-")[0];
+  if (lastNumericId !== numericId) {
+    return false;
+  }
+  if (sectionCheck !== undefined && lastBook.section !== sectionCheck) {
+    return false;
+  }
+
+  if (update.title && !lastBook.title) {
+    lastBook.title = update.title;
+  } else if (update.title && lastBook.title !== update.title) {
+    lastBook.title = update.title;
+  }
+  if (update.coverImage && !lastBook.coverImage) {
+    lastBook.coverImage = update.coverImage;
+  }
+  if (update.author) {
+    lastBook.author = update.author;
+  }
+  return true;
+}
 
 export function parseBlogHtml(html: string, url?: string): Blog | null {
   try {
@@ -46,7 +106,7 @@ export function parseBlogHtml(html: string, url?: string): Blog | null {
     }
 
     // --- Contextual Book Extraction Logic ---
-    const booksWithContext: (Book & { section?: string })[] = [];
+    const booksWithContext: BookWithSection[] = [];
     let currentSection = "Intro";
 
     // Recursive function to traverse DOM and capture context
@@ -76,103 +136,71 @@ export function parseBlogHtml(html: string, url?: string): Blog | null {
           const anchor = element.querySelector("a");
           const img = element.querySelector("img");
           const href = anchor?.getAttribute("href");
+          const fullId = extractBookIdFromHref(href);
 
-          if (href?.includes("/book/show/")) {
-            const match = href.match(/\/book\/show\/([^?#]+)/);
-            if (match?.[1]) {
-              const fullId = match[1];
-              const title = img?.getAttribute("alt")?.trim() || anchor?.textContent?.trim() || "";
-              const coverImage = img?.getAttribute("src");
-
-              const candidate: Book & { section?: string } = {
-                id: fullId,
-                title: title,
-                webUrl: href.startsWith("http") ? href : `https://www.goodreads.com${href}`,
-                section: currentSection,
-                coverImage: coverImage || undefined,
-              };
-
-              booksWithContext.push(candidate);
-              return;
-            }
+          if (fullId && href) {
+            booksWithContext.push({
+              id: fullId,
+              title: img?.getAttribute("alt")?.trim() || anchor?.textContent?.trim() || "",
+              webUrl: toFullUrl(href),
+              section: currentSection,
+              coverImage: img?.getAttribute("src") || undefined,
+            });
+            return;
           }
         }
 
         // 3. Precise Match: Book Info Row (Title & Author text)
-        // Structure: <div class="bookInfoFullRow"><div class="bookTitle">...<a href="...">Title</a>...</div></div>
         if (element.tagName === "DIV" && element.classList.contains("bookInfoFullRow")) {
           const titleAnchor = element.querySelector(".bookTitle a[href*='/book/show/']");
           if (titleAnchor) {
             const href = titleAnchor.getAttribute("href");
             const fullTitle = titleAnchor.textContent?.trim();
+            const fullId = extractBookIdFromHref(href);
 
-            if (href && fullTitle) {
-              const match = href.match(/\/book\/show\/([^?#]+)/);
-              const numericId = match?.[1]?.split("-")[0];
+            if (fullId && fullTitle) {
+              const numericId = fullId.split("-")[0];
+              const authorAnchor = element.querySelector(".bookTitle a[href*='/author/show/']");
+              const author = authorAnchor?.textContent?.trim();
 
-              // Find the last book added to see if we should merge
-              const lastBook = booksWithContext[booksWithContext.length - 1];
-              const lastNumericId = lastBook?.id?.split("-")[0];
-
-              if (lastBook && lastNumericId === numericId) {
-                // MERGE: Update the existing book with better text data
-                lastBook.title = fullTitle;
-                // Extract Author if available
-                const authorAnchor = element.querySelector(".bookTitle a[href*='/author/show/']");
-                if (authorAnchor) {
-                  lastBook.author = authorAnchor.textContent?.trim();
-                }
-                return; // Done processing this row
+              if (tryMergeWithLast(booksWithContext, numericId, { title: fullTitle, author })) {
+                return;
               }
             }
           }
         }
 
         // 4. Fallback: Detect loose Book Links (for older blog formats)
-        if (element.tagName === "A" && element.getAttribute("href")?.includes("/book/show/")) {
+        if (element.tagName === "A") {
           const href = element.getAttribute("href");
+          const fullId = extractBookIdFromHref(href);
 
-          if (href) {
-            const match = href.match(/\/book\/show\/([^?#]+)/);
+          if (fullId && href) {
+            const numericId = fullId.split("-")[0];
+            const img = element.querySelector("img");
+            const text = element.textContent?.trim();
+            const imgAlt = img?.getAttribute("alt");
 
-            if (match?.[1]) {
-              const fullId = match[1];
-              const numericId = fullId.split("-")[0];
+            let title = "";
+            let coverImage: string | undefined;
 
-              const img = element.querySelector("img");
-              const text = element.textContent?.trim();
-              const imgAlt = img?.getAttribute("alt");
+            if (img) {
+              coverImage = img.getAttribute("src") || undefined;
+              if (imgAlt) {
+                title = imgAlt;
+              }
+            } else if (text && text.length > 1 && !["Read more", "View details"].includes(text)) {
+              title = text.replace(/\s+/g, " ");
+            }
 
-              const candidate: Book & { section?: string } = {
+            if (!tryMergeWithLast(booksWithContext, numericId, { title, coverImage }, currentSection)) {
+              booksWithContext.push({
                 id: fullId,
-                title: "",
-                webUrl: href.startsWith("http") ? href : `https://www.goodreads.com${href}`,
+                title,
+                webUrl: toFullUrl(href),
                 section: currentSection,
-              };
-
-              if (img) {
-                candidate.coverImage = img.getAttribute("src") || undefined;
-                if (imgAlt) {
-                  candidate.title = imgAlt;
-                }
-              } else if (text && text.length > 1 && !["Read more", "View details"].includes(text)) {
-                candidate.title = text.replace(/\s+/g, " ");
-              }
-
-              // Deduplication logic for the fallback method
-              const lastBook = booksWithContext[booksWithContext.length - 1];
-              const lastId = lastBook?.id.split("-")[0];
-
-              if (lastBook && lastId === numericId && lastBook.section === currentSection) {
-                if (!lastBook.title && candidate.title) {
-                  lastBook.title = candidate.title;
-                }
-                if (!lastBook.coverImage && candidate.coverImage) {
-                  lastBook.coverImage = candidate.coverImage;
-                }
-              } else {
-                booksWithContext.push(candidate);
-              }
+                coverImage,
+              });
             }
           }
         }
@@ -191,7 +219,7 @@ export function parseBlogHtml(html: string, url?: string): Blog | null {
     // 1. Must have Title or Image
     // 2. Ensure Uniqueness by ID
     const uniqueIds = new Set<string>();
-    const books: (Book & { section?: string })[] = [];
+    const books: BookWithSection[] = [];
 
     for (const b of booksWithContext) {
       const hasContent = b.title || b.coverImage;
@@ -212,8 +240,8 @@ export function parseBlogHtml(html: string, url?: string): Blog | null {
       // content,
       mentionedBooks: books,
     };
-  } catch (error) {
-    console.error("Error parsing blog HTML:", error);
+  } catch (error: unknown) {
+    log.error("Error parsing blog HTML:", error);
     return null;
   }
 }

@@ -5,7 +5,10 @@
 
 import { parseHTML } from "linkedom";
 import type { Edition } from "../types";
+import { Logger } from "../utils/logger";
 import { getErrorMessage } from "../utils/util";
+
+const log = new Logger("EditionsParser");
 
 export interface FilterOption {
   value: string;
@@ -128,7 +131,7 @@ export function parseEditionsList(html: string): Edition[] {
 
     return editions;
   } catch (error: unknown) {
-    console.error("Error parsing editions list:", getErrorMessage(error));
+    log.error("Error parsing editions list:", getErrorMessage(error));
     return [];
   }
 }
@@ -159,7 +162,7 @@ export function parseEditionsHtml(html: string): EditionsFilters | null {
       language: extractOptions("filter_by_language"),
     };
   } catch (error: unknown) {
-    console.error("Error parsing editions HTML:", getErrorMessage(error));
+    log.error("Error parsing editions HTML:", getErrorMessage(error));
     return null;
   }
 }
@@ -226,7 +229,7 @@ export function extractPaginationInfo(html: string): PaginationInfo {
       totalPages,
     };
   } catch (error: unknown) {
-    console.error("Error extracting pagination info:", getErrorMessage(error));
+    log.error("Error extracting pagination info:", getErrorMessage(error));
     return { hasNextPage: false, totalPages: 1 };
   }
 }

@@ -60,3 +60,28 @@ export interface Edition {
   averageRating?: number;
   createdAt?: string;
 }
+
+/**
+ * Type guard to validate if parsed JSON is a valid Blog object.
+ */
+export function isBlog(data: unknown): data is Blog {
+  if (typeof data !== "object" || data === null) {
+    return false;
+  }
+  const obj = data as Record<string, unknown>;
+  return typeof obj.id === "string" && typeof obj.title === "string";
+}
+
+/**
+ * Type guard to validate if parsed JSON has a valid EditionsFilters structure.
+ * Imported and used in goodreads-service.ts for cache validation.
+ */
+export function isEditionsFilters(
+  data: unknown,
+): data is { sort: unknown[]; format: unknown[]; language: unknown[] } {
+  if (typeof data !== "object" || data === null) {
+    return false;
+  }
+  const obj = data as Record<string, unknown>;
+  return Array.isArray(obj.sort) && Array.isArray(obj.format) && Array.isArray(obj.language);
+}

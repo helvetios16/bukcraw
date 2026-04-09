@@ -4,6 +4,7 @@
  */
 
 import { mkdirSync } from "node:fs";
+import { FILE_CACHE_LOOKBACK_DAYS } from "../config/constants";
 import { hashUrl, isValidUrl } from "../utils/util";
 
 export interface CacheSaveOptions {
@@ -22,7 +23,7 @@ export class CacheManager {
   }
 
   public async has(url: string): Promise<boolean> {
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < FILE_CACHE_LOOKBACK_DAYS; i++) {
       const date = new Date();
       date.setDate(date.getDate() - i);
       const dateStr = date.toISOString().split("T")[0];
@@ -39,8 +40,7 @@ export class CacheManager {
   }
 
   public async get(url: string, extension: string = ".html"): Promise<string | undefined> {
-    // Look back for up to 3 days (today and 2 days before)
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < FILE_CACHE_LOOKBACK_DAYS; i++) {
       const date = new Date();
       date.setDate(date.getDate() - i);
       const dateStr = date.toISOString().split("T")[0];
@@ -73,6 +73,25 @@ export class CacheManager {
     await Bun.write(file, content);
 
     return filename;
+  }
+
+  /**
+   * Atomically gets cached content or fetches it via the provided function.
+   * Eliminates the TOCTOU race condition between has()/get() and save().
+   */
+  public async getOrFetch(
+    url: string,
+    fetcher: () => Promise<string>,
+    extension: string = ".html",
+  ): Promise<{ content: string; fromCache: boolean }> {
+    const cached = await this.get(url, extension);
+    if (cached) {
+      return { content: cached, fromCache: true };
+    }
+
+    const content = await fetcher();
+    await this.save({ url, content, force: true, extension });
+    return { content, fromCache: false };
   }
 
   private getDayDir(): string {

@@ -2,6 +2,9 @@
 
 import puppeteer, { type Browser, type Page } from "puppeteer";
 import { PUPPETEER_LAUNCH_OPTIONS, USER_AGENT, USER_AGENT_METADATA } from "../config/constants";
+import { Logger } from "../utils/logger";
+
+const log = new Logger("Browser");
 
 /**
  * A client to manage the Puppeteer browser instance.
@@ -19,7 +22,7 @@ export class BrowserClient {
       throw new Error("Browser is already launched.");
     }
 
-    console.log("Starting browser...");
+    log.info("Starting browser...");
     this.browser = await puppeteer.launch(PUPPETEER_LAUNCH_OPTIONS);
 
     const page = await this.browser.newPage();
@@ -34,7 +37,7 @@ export class BrowserClient {
    */
   public async close(): Promise<void> {
     if (this.browser) {
-      console.log("Closing browser...");
+      log.info("Closing browser...");
       await this.browser.close();
       this.browser = null;
     }

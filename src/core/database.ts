@@ -48,53 +48,6 @@ interface EditionRow {
 }
 
 /**
- * Type guard for BookRow.
- */
-function isBookRow(data: unknown): data is BookRow {
-  const d = data as Record<string, unknown>;
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "id" in d &&
-    typeof d.id === "string" &&
-    "title" in d &&
-    typeof d.title === "string"
-  );
-}
-
-/**
- * Type guard for BlogRow.
- */
-function isBlogRow(data: unknown): data is BlogRow {
-  const d = data as Record<string, unknown>;
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "id" in d &&
-    typeof d.id === "string" &&
-    "title" in d &&
-    typeof d.title === "string" &&
-    "url" in d &&
-    typeof d.url === "string"
-  );
-}
-
-/**
- * Type guard for EditionRow array.
- */
-function isEditionRow(data: unknown): data is EditionRow {
-  const d = data as Record<string, unknown>;
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "title" in d &&
-    typeof d.title === "string" &&
-    "link" in d &&
-    typeof d.link === "string"
-  );
-}
-
-/**
  * Represents a raw row from the 'sessions' table in SQLite.
  */
 interface SessionRow {
@@ -104,18 +57,55 @@ interface SessionRow {
 }
 
 /**
- * Type guard for SessionRow.
+ * Generic type guard factory for SQLite row validation.
+ * @param requiredFields - Map of field names to their expected types.
  */
-function isSessionRow(data: unknown): data is SessionRow {
-  const d = data as Record<string, unknown>;
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "cookies" in d &&
-    typeof d.cookies === "string" &&
-    "created_at" in d &&
-    typeof d.created_at === "string"
-  );
+function createRowGuard<T>(requiredFields: Record<string, string>) {
+  return (data: unknown): data is T => {
+    if (typeof data !== "object" || data === null) {
+      return false;
+    }
+    const d = data as Record<string, unknown>;
+    return Object.entries(requiredFields).every(
+      ([field, type]) => field in d && typeof d[field] === type,
+    );
+  };
+}
+
+const isBookRow = createRowGuard<BookRow>({ id: "string", title: "string" });
+const isBlogRow = createRowGuard<BlogRow>({ id: "string", title: "string", url: "string" });
+const isEditionRow = createRowGuard<EditionRow>({ title: "string", link: "string" });
+const isSessionRow = createRowGuard<SessionRow>({ cookies: "string", created_at: "string" });
+
+function mapBookRow(row: BookRow): Book {
+  return {
+    id: row.id,
+    legacyId: row.legacy_id ? Number(row.legacy_id) : undefined,
+    title: row.title,
+    titleComplete: row.title_complete || undefined,
+    author: row.author || undefined,
+    description: row.description || undefined,
+    averageRating: row.average_rating || undefined,
+    pageCount: row.page_count || undefined,
+    language: row.language || undefined,
+    format: row.format || undefined,
+    coverImage: row.cover_image || undefined,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapEditionRow(row: EditionRow): Edition {
+  return {
+    title: row.title,
+    link: row.link,
+    description: row.description || undefined,
+    language: row.language || undefined,
+    format: row.format || undefined,
+    averageRating: row.average_rating || undefined,
+    pages: row.pages_count || undefined,
+    coverImage: row.cover_image || undefined,
+    createdAt: row.created_at,
+  };
 }
 
 export class DatabaseService {
@@ -128,6 +118,22 @@ export class DatabaseService {
 
   private init(): void {
     this.db.run("PRAGMA foreign_keys = ON;");
+
+    // Schema version tracking
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS schema_version (
+        version INTEGER PRIMARY KEY,
+        applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    const currentVersion = this.db.prepare(
+      "SELECT MAX(version) as v FROM schema_version",
+    ).get() as { v: number | null } | null;
+
+    if (!currentVersion?.v) {
+      this.db.run("INSERT OR IGNORE INTO schema_version (version) VALUES (1)");
+    }
 
     // 0. Tabla de Sesiones (Cookies)
     this.db.run(`
@@ -210,40 +216,14 @@ export class DatabaseService {
       return null;
     }
 
-    return {
-      id: result.id,
-      legacyId: result.legacy_id ? Number(result.legacy_id) : undefined,
-      title: result.title,
-      titleComplete: result.title_complete || undefined,
-      author: result.author || undefined,
-      description: result.description || undefined,
-      averageRating: result.average_rating || undefined,
-      pageCount: result.page_count || undefined,
-      language: result.language || undefined,
-      format: result.format || undefined,
-      coverImage: result.cover_image || undefined,
-      updatedAt: result.updated_at,
-    };
+    return mapBookRow(result);
   }
 
   public getAllBooks(): Book[] {
     const query = this.db.prepare("SELECT * FROM books");
     const results = query.all();
 
-    return (results as unknown[]).filter(isBookRow).map((result) => ({
-      id: result.id,
-      legacyId: result.legacy_id ? Number(result.legacy_id) : undefined,
-      title: result.title,
-      titleComplete: result.title_complete || undefined,
-      author: result.author || undefined,
-      description: result.description || undefined,
-      averageRating: result.average_rating || undefined,
-      pageCount: result.page_count || undefined,
-      language: result.language || undefined,
-      format: result.format || undefined,
-      coverImage: result.cover_image || undefined,
-      updatedAt: result.updated_at,
-    }));
+    return (results as unknown[]).filter(isBookRow).map(mapBookRow);
   }
 
   public getAllBlogs(): Blog[] {
@@ -270,17 +250,7 @@ export class DatabaseService {
     const query = this.db.prepare(sql);
     const results = query.all(...params);
 
-    return (results as unknown[]).filter(isEditionRow).map((row) => ({
-      title: row.title,
-      link: row.link,
-      description: row.description || undefined,
-      language: row.language || undefined,
-      format: row.format || undefined,
-      averageRating: row.average_rating || undefined,
-      pages: row.pages_count || undefined,
-      coverImage: row.cover_image || undefined,
-      createdAt: row.created_at,
-    }));
+    return (results as unknown[]).filter(isEditionRow).map(mapEditionRow);
   }
 
   public getLatestSession(): { cookies: string; createdAt: string } | null {

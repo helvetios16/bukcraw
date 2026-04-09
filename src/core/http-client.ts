@@ -1,6 +1,13 @@
 // src/core/http-client.ts
 
-import { USER_AGENT } from "../config/constants";
+import {
+  INITIAL_RETRY_DELAY_MS,
+  MAX_RETRIES,
+  RETRYABLE_STATUS_CODES,
+  RETRY_BACKOFF_MULTIPLIER,
+  USER_AGENT,
+} from "../config/constants";
+import { delay } from "../utils/util";
 
 /**
  * Interface for custom HTTP headers.
@@ -48,29 +55,47 @@ export class HttpClient {
   }
 
   /**
-   * Performs a GET request and returns the response body as text.
+   * Performs a GET request with automatic retry and exponential backoff.
+   * Retries on transient errors (429, 5xx) with jitter to avoid thundering herd.
    * @param url - The target URL.
    * @param options - Optional request configuration.
    * @returns The response body as a string.
    */
   public async get(url: string, options?: RequestOptions): Promise<string> {
     const headers = { ...this.defaultHeaders, ...options?.headers };
+    let lastError: Error | null = null;
 
-    try {
-      const response = await fetch(url, {
-        method: options?.method ?? "GET",
-        headers,
-      });
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const response = await fetch(url, {
+          method: options?.method ?? "GET",
+          headers,
+        });
 
-      if (!response.ok) {
-        throw new Error(`HTTP Error: ${response.status} ${response.statusText} at ${url}`);
+        if (!response.ok) {
+          const status = response.status;
+          if (attempt < MAX_RETRIES && RETRYABLE_STATUS_CODES.includes(status as 429 | 500 | 502 | 503 | 504)) {
+            const retryAfter = response.headers.get("Retry-After");
+            const backoff = retryAfter
+              ? parseInt(retryAfter, 10) * 1000
+              : INITIAL_RETRY_DELAY_MS * RETRY_BACKOFF_MULTIPLIER ** attempt * (0.5 + Math.random());
+            await delay(backoff);
+            continue;
+          }
+          throw new Error(`HTTP Error: ${status} ${response.statusText} at ${url}`);
+        }
+
+        return await response.text();
+      } catch (error: unknown) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (attempt < MAX_RETRIES) {
+          const backoff = INITIAL_RETRY_DELAY_MS * RETRY_BACKOFF_MULTIPLIER ** attempt * (0.5 + Math.random());
+          await delay(backoff);
+        }
       }
-
-      return await response.text();
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to fetch ${url}: ${message}`);
     }
+
+    throw new Error(`Failed to fetch ${url} after ${MAX_RETRIES} retries: ${lastError?.message}`);
   }
 
   /**

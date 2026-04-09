@@ -4,13 +4,25 @@
  */
 
 import type { ElementHandle, Page } from "puppeteer";
-import { BLOG_URL, BOOK_URL, GOODREADS_URL, WORK_URL } from "../config/constants";
+import {
+  BLOG_URL,
+  BOOK_URL,
+  CACHE_TTL_DAYS,
+  GOODREADS_URL,
+  NAVIGATION_TIMEOUT_MS,
+  SESSION_TTL_MINUTES,
+  WORK_URL,
+} from "../config/constants";
 import type { BrowserClient } from "../core/browser-client";
 import { CacheManager } from "../core/cache-manager";
 import { DatabaseService } from "../core/database";
 import { HttpClient } from "../core/http-client";
-import type { Blog, Book, BookFilterOptions, Edition } from "../types";
-import { delay, getErrorMessage, isValidBookId } from "../utils/util";
+import { RateLimiter } from "../core/rate-limiter";
+import { type Blog, type Book, type BookFilterOptions, type Edition, isBlog, isEditionsFilters } from "../types";
+import { Logger } from "../utils/logger";
+import { getErrorMessage, isValidBookId } from "../utils/util";
+
+const log = new Logger("GoodreadsService");
 import { parseBlogHtml } from "./blog-parser";
 import { parseBookData } from "./book-parser";
 import {
@@ -34,6 +46,7 @@ export class GoodreadsService {
   private readonly browserClient?: BrowserClient;
   private readonly cache = new CacheManager();
   private readonly db = new DatabaseService();
+  private readonly rateLimiter = new RateLimiter();
   private http: HttpClient | null = null;
 
   // Telemetry stats
@@ -59,12 +72,12 @@ export class GoodreadsService {
     const latestSession = this.db.getLatestSession();
 
     if (latestSession && this.isSessionFresh(latestSession.createdAt)) {
-      console.log("Reusing existing session from database.");
+      log.info("Reusing existing session from database.");
       this.http = new HttpClient(latestSession.cookies);
       return;
     }
 
-    console.log("Session expired or missing. Fetching new cookies...");
+    log.info("Session expired or missing. Fetching new cookies...");
 
     try {
       await this.ensureBrowserPage();
@@ -83,9 +96,9 @@ export class GoodreadsService {
 
       this.db.saveSession(cookiesStr);
       this.http = new HttpClient(cookiesStr);
-      console.log("New session initialized.");
+      log.info("New session initialized.");
     } catch (error: unknown) {
-      console.error("Critical session error:", getErrorMessage(error));
+      log.error("Critical session error:", getErrorMessage(error));
       throw new Error("SESSION_INIT_FAILURE: Could not obtain a valid Goodreads session.");
     }
   }
@@ -95,7 +108,7 @@ export class GoodreadsService {
     const now = new Date();
     const diffMs = now.getTime() - createdDate.getTime();
     const diffMins = Math.floor(diffMs / 60000);
-    return diffMins < 20;
+    return diffMins < SESSION_TTL_MINUTES;
   }
 
   public async scrapeBook(id: string): Promise<Book | null> {
@@ -107,14 +120,14 @@ export class GoodreadsService {
     const dbBook = this.db.getBook(id);
     if (dbBook) {
       if (this.isCacheValid(dbBook.updatedAt)) {
-        console.log(`DB cache hit: book ${id}`);
+        log.debug(`DB cache hit: book ${id}`);
         this.stats.cacheHits++;
         return dbBook;
       }
     }
 
     const url = `${GOODREADS_URL}${BOOK_URL}${id}`;
-    console.log(`Scraping book ${id}...`);
+    log.info(`Scraping book ${id}...`);
 
     const fileBook = await this.tryLoadBookFromFileCache(url);
     if (fileBook) {
@@ -137,7 +150,7 @@ export class GoodreadsService {
     }
 
     if (!bookData) {
-      console.warn("Failed to extract book data.");
+      log.warn("Failed to extract book data.");
     }
 
     // 4. Guardar HTML como respaldo
@@ -148,15 +161,15 @@ export class GoodreadsService {
 
   public async scrapeEditionsFilters(legacyId: string | number): Promise<void> {
     const url = `${GOODREADS_URL}${WORK_URL}${legacyId}`;
-    console.log(`Scraping edition filters (Work ID: ${legacyId})...`);
+    log.info(`Scraping edition filters (Work ID: ${legacyId})...`);
 
     try {
       const cachedParsed = await this.cache.get(url, "-parsed.json");
       if (cachedParsed) {
         return;
       }
-    } catch (_error: unknown) {
-      // Cache miss, proceed with network fetch
+    } catch (error: unknown) {
+      log.debug("Edition filters cache miss:", getErrorMessage(error));
     }
 
     const { content } = await this.fetchContentWithFallback(url);
@@ -172,20 +185,25 @@ export class GoodreadsService {
         force: true,
         extension: "-parsed.json",
       });
-      console.log(`Edition filters saved (${editionsData.language.length} languages found).`);
+      log.info(`Edition filters saved (${editionsData.language.length} languages found).`);
     } else {
-      console.warn("Failed to parse edition filters.");
+      log.warn("Failed to parse edition filters.");
     }
   }
 
   public async scrapeBlog(id: string): Promise<Blog | null> {
     const url = `${GOODREADS_URL}${BLOG_URL}${id}`;
-    console.log(`Scraping blog ${id}...`);
+    log.info(`Scraping blog ${id}...`);
 
     try {
       const cachedParsed = await this.cache.get(url, "-parsed.json");
       if (cachedParsed) {
-        const blogData = JSON.parse(cachedParsed) as Blog;
+        const parsed: unknown = JSON.parse(cachedParsed);
+        if (!isBlog(parsed)) {
+          log.warn("Cached blog data is invalid, re-fetching...");
+          throw new Error("Invalid cached blog data");
+        }
+        const blogData = parsed;
 
         if (blogData?.mentionedBooks) {
           for (const book of blogData.mentionedBooks) {
@@ -199,8 +217,8 @@ export class GoodreadsService {
         }
         return blogData;
       }
-    } catch (_error: unknown) {
-      // Cache miss, proceed with network fetch
+    } catch (error: unknown) {
+      log.debug("Blog cache miss:", getErrorMessage(error));
     }
 
     const { content } = await this.fetchContentWithFallback(url);
@@ -216,7 +234,7 @@ export class GoodreadsService {
         force: true,
         extension: "-parsed.json",
       });
-      console.log(`Blog parsed (${blogData.mentionedBooks?.length || 0} books found).`);
+      log.info(`Blog parsed (${blogData.mentionedBooks?.length || 0} books found).`);
 
       if (blogData.mentionedBooks) {
         for (const book of blogData.mentionedBooks) {
@@ -229,7 +247,7 @@ export class GoodreadsService {
         }
       }
     } else {
-      console.warn("Failed to parse blog content.");
+      log.warn("Failed to parse blog content.");
     }
 
     return blogData;
@@ -282,6 +300,8 @@ export class GoodreadsService {
       await this.initSession();
     }
 
+    await this.rateLimiter.throttle();
+
     try {
       const content = await this.http?.get(url);
 
@@ -289,8 +309,8 @@ export class GoodreadsService {
         this.stats.httpSuccess++;
         return { content, method: "http" };
       }
-    } catch (_error: unknown) {
-      // HTTP failed, fall back to browser
+    } catch (error: unknown) {
+      log.debug("HTTP fetch failed, falling back to browser:", getErrorMessage(error));
     }
 
     this.stats.browserFallback++;
@@ -312,13 +332,13 @@ export class GoodreadsService {
     const efficiency =
       totalRequests > 0 ? ((this.stats.httpSuccess / totalRequests) * 100).toFixed(1) : "0";
 
-    console.log("TELEMETRY REPORT");
-    console.log("=".repeat(40));
-    console.log(`HTTP requests:        ${this.stats.httpSuccess}`);
-    console.log(`Browser fallbacks:    ${this.stats.browserFallback}`);
-    console.log(`Cache hits:           ${this.stats.cacheHits}`);
-    console.log("-".repeat(40));
-    console.log(`HTTP success rate:    ${efficiency}%`);
+    log.info("TELEMETRY REPORT");
+    log.info("=".repeat(40));
+    log.info(`HTTP requests:        ${this.stats.httpSuccess}`);
+    log.info(`Browser fallbacks:    ${this.stats.browserFallback}`);
+    log.info(`Cache hits:           ${this.stats.cacheHits}`);
+    log.info("-".repeat(40));
+    log.info(`HTTP success rate:    ${efficiency}%`);
   }
 
   private async ensureBrowserPage(): Promise<void> {
@@ -331,7 +351,7 @@ export class GoodreadsService {
     }
 
     this.page = await this.browserClient.launch();
-    this.page.setDefaultNavigationTimeout(60000);
+    this.page.setDefaultNavigationTimeout(NAVIGATION_TIMEOUT_MS);
   }
 
   private async navigateTo(url: string): Promise<void> {
@@ -347,7 +367,7 @@ export class GoodreadsService {
 
     const status = response.status();
     if (status === 404) {
-      console.error("Resource not found (404).");
+      log.error("Resource not found (404).");
       return;
     }
     if (status === 403 || status === 429) {
@@ -373,8 +393,8 @@ export class GoodreadsService {
           return book;
         }
       }
-    } catch (_error: unknown) {
-      // Cache read failed, proceed with network fetch
+    } catch (error: unknown) {
+      log.debug("File cache read failed:", getErrorMessage(error));
     }
     return null;
   }
@@ -413,7 +433,7 @@ export class GoodreadsService {
       }
       return bookData;
     } catch (e: unknown) {
-      console.warn("Failed to process Next.js data:", getErrorMessage(e));
+      log.warn("Failed to process Next.js data:", getErrorMessage(e));
       return null;
     }
   }
@@ -424,7 +444,7 @@ export class GoodreadsService {
 
     if (dbEditions && dbEditions.length > 0 && firstEdition) {
       if (this.isCacheValid(firstEdition.createdAt)) {
-        console.log(`DB cache hit: ${dbEditions.length} editions found.`);
+        log.debug(`DB cache hit: ${dbEditions.length} editions found.`);
         return dbEditions;
       }
     }
@@ -443,7 +463,13 @@ export class GoodreadsService {
       );
     }
 
-    const validOptions = JSON.parse(cachedMetadata) as EditionsFilters;
+    const parsedOptions: unknown = JSON.parse(cachedMetadata);
+    if (!isEditionsFilters(parsedOptions)) {
+      throw new Error(
+        `Cached edition metadata for ID ${legacyId} is corrupted. Delete cache and run 'scrapeEditionsFilters' again.`,
+      );
+    }
+    const validOptions = parsedOptions as EditionsFilters;
     const { sort, format, language } = options;
 
     if (sort && !validOptions.sort.some((s) => s.value === sort)) {
@@ -484,17 +510,13 @@ export class GoodreadsService {
     allEditions.push(...page1Editions);
 
     const pagination = extractPaginationInfo(page1Content);
-    console.log(`Pagination: ${pagination.totalPages} pages total.`);
+    log.info(`Pagination: ${pagination.totalPages} pages total.`);
 
     // Next Pages
     if (pagination.totalPages > 1) {
       for (let i = 2; i <= pagination.totalPages; i++) {
         const pageUrl = `${baseUrlWithParams}&page=${i}`;
         const { content, fromCache } = await this.getPageContent(pageUrl);
-
-        if (!fromCache) {
-          await delay(2500 + Math.random() * 2500); // Respectful delay
-        }
 
         scrapedUrls.push(pageUrl);
         const pageEditions = parseEditionsList(content);
@@ -506,15 +528,14 @@ export class GoodreadsService {
   }
 
   private async getPageContent(url: string): Promise<{ content: string; fromCache: boolean }> {
-    const content = await this.cache.get(url, ".html");
-    if (content) {
-      return { content, fromCache: true };
-    }
-
-    const { content: freshContent } = await this.fetchContentWithFallback(url);
-    await this.cache.save({ url, content: freshContent, force: true, extension: ".html" });
-
-    return { content: freshContent, fromCache: false };
+    return this.cache.getOrFetch(
+      url,
+      async () => {
+        const { content } = await this.fetchContentWithFallback(url);
+        return content;
+      },
+      ".html",
+    );
   }
 
   private async saveEditionsResults(params: SaveEditionsParams): Promise<void> {
@@ -550,7 +571,7 @@ export class GoodreadsService {
       extension: "-filter-meta.json",
     });
 
-    console.log(`Done. ${editions.length} editions saved.`);
+    log.info(`Done. ${editions.length} editions saved.`);
   }
 
   private isCacheValid(dateStr?: string): boolean {
@@ -561,6 +582,6 @@ export class GoodreadsService {
     const now = new Date();
     const diffTime = Math.abs(now.getTime() - date.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays <= 10;
+    return diffDays <= CACHE_TTL_DAYS;
   }
 }
