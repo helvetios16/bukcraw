@@ -1,4 +1,4 @@
-import { DatabaseService } from "../src/core/database";
+import { DatabaseService } from "../../src/core/database";
 
 interface SqlArgs {
   blogId: string;

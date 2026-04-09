@@ -1,9 +1,9 @@
-// scripts/create-session.ts
+// scripts/cli/create-session.ts
 
-import { GOODREADS_URL } from "../src/config/constants";
-import { BrowserClient } from "../src/core/browser-client";
-import { DatabaseService } from "../src/core/database";
-import { GoodreadsService } from "../src/services/goodreads-service";
+import { GOODREADS_URL } from "../../src/config/constants";
+import { BrowserClient } from "../../src/core/browser-client";
+import { DatabaseService } from "../../src/core/database";
+import { GoodreadsService } from "../../src/services/goodreads-service";
 
 async function createSession() {
   console.log("🚀 Iniciando proceso de creación de sesión...");

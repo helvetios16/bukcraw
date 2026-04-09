@@ -37,7 +37,7 @@ try {
     case "editions": {
       if (!arg) {
         console.error(
-          "❌ Debes proporcionar un Work ID (Legacy ID). Ejemplo: bun scripts/query-db.ts editions 66322",
+          "❌ Debes proporcionar un Work ID (Legacy ID). Ejemplo: bun scripts/db/query.ts editions 66322",
         );
         break;
       }

@@ -4,7 +4,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { hashUrl } from "../src/utils/util";
+import { hashUrl } from "../../src/utils/util";
 
 // El JSON proporcionado
 const data = {

@@ -1,16 +1,9 @@
 import inquirer from "inquirer";
-import { DatabaseService } from "../src/core/database";
-import type { Book, Edition } from "../src/types";
+import { DatabaseService } from "../../src/core/database";
+import type { Book, Edition } from "../../src/types";
+import { ansi } from "../../src/utils/logger";
 
-const ansi = (color: string) => Bun.color(color, "ansi-16m") ?? "";
-const c = {
-  heading: ansi("#7ec8e3"),
-  success: ansi("#81c784"),
-  warn: ansi("#ffb74d"),
-  error: ansi("#e57373"),
-  dim: ansi("#9e9e9e"),
-  reset: "\x1b[0m",
-};
+const c = ansi;
 
 /**
  * Interface for the final book report item.
@@ -76,7 +69,7 @@ async function main(): Promise<void> {
       const allBlogs = dbService.getAllBlogs();
 
       if (allBlogs.length === 0) {
-        console.error(`${c.error}No blogs found in database.${c.reset}`);
+        console.error(c.error("No blogs found in database."));
         return;
       }
 
@@ -111,18 +104,18 @@ async function main(): Promise<void> {
       targetBlogs = answer.selectedBlogs;
 
       if (targetBlogs.length === 0) {
-        console.log(`${c.warn}No blogs selected. Generating report for ALL books...${c.reset}`);
+        console.log(c.warn("No blogs selected. Generating report for ALL books..."));
       }
     }
 
     console.log(
-      `${c.heading}Report${c.reset} ${c.dim}| lang=${language || "all"} blogs=${targetBlogs.length || "all"}${c.reset}`,
+      `${c.heading("Report")} ${c.gray(`| lang=${language || "all"} blogs=${targetBlogs.length || "all"}`)}`,
     );
 
     const db = dbService.getDb();
     const booksByCanonicalKey = new Map<string, BookReport>();
 
-    console.log(`\n${c.heading}--- 1. Fetching relations ---${c.reset}`);
+    console.log(`\n${c.heading("--- 1. Fetching relations ---")}`);
 
     let querySql = `
       SELECT bb.book_id, b.id as blog_id, b.title as blog_title, b.url as blog_url
@@ -159,7 +152,7 @@ async function main(): Promise<void> {
       });
     }
 
-    console.log(`\n${c.heading}--- 2. Processing books ---${c.reset}`);
+    console.log(`\n${c.heading("--- 2. Processing books ---")}`);
     const allBooks = dbService.getAllBooks();
 
     const filteredBooks =
@@ -171,7 +164,7 @@ async function main(): Promise<void> {
         : allBooks;
 
     if (targetBlogs.length > 0 && filteredBooks.length === 0) {
-      console.warn(`${c.warn}No books found for selected blogs.${c.reset}`);
+      console.warn(c.warn("No books found for selected blogs."));
     }
 
     for (const [index, book] of filteredBooks.entries()) {
@@ -246,25 +239,24 @@ async function main(): Promise<void> {
       books: finalBooks,
     };
 
-    console.log(`\n${c.heading}--- 3. Saving report ---${c.reset}`);
+    console.log(`\n${c.heading("--- 3. Saving report ---")}`);
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const finalOutputName =
       output === "report-database-books.json" ? `report-database-books-${timestamp}.json` : output;
 
-    const fs = await import("node:fs");
     const path = await import("node:path");
     const finalPath = path.resolve(process.cwd(), finalOutputName);
 
-    fs.writeFileSync(finalPath, JSON.stringify(finalReport, null, 2));
+    await Bun.write(finalPath, JSON.stringify(finalReport, null, 2));
 
     const withEditions = finalReport.books.filter((b) => b.editionsFound.length > 0).length;
     console.log(
-      `${c.success}Done.${c.reset} ${withEditions}/${finalReport.books.length} books with editions. ${c.dim}${finalPath}${c.reset}`,
+      `${c.success("Done.")} ${withEditions}/${finalReport.books.length} books with editions. ${c.gray(finalPath)}`,
     );
   } catch (error: unknown) {
     const fatalMessage = error instanceof Error ? error.message : String(error);
-    console.error(`\n${c.error}Fatal error:${c.reset} ${fatalMessage}`);
+    console.error(`\n${c.error("Fatal error:")} ${fatalMessage}`);
   } finally {
     dbService.close();
   }

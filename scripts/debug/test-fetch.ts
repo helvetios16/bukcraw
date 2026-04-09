@@ -1,5 +1,5 @@
-// scripts/test-fetch.ts
-import { BOOK_URL, GOODREADS_URL, USER_AGENT } from "../src/config/constants";
+// scripts/debug/test-fetch.ts
+import { BOOK_URL, GOODREADS_URL, USER_AGENT } from "../../src/config/constants";
 
 async function testFetch(bookId: string) {
   const url = `${GOODREADS_URL}${BOOK_URL}${bookId}`;

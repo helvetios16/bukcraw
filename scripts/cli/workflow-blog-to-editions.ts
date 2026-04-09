@@ -1,16 +1,10 @@
-import { BrowserClient } from "../src/core/browser-client";
-import { GoodreadsService } from "../src/services/goodreads-service";
-import type { Book, BookFilterOptions, Edition } from "../src/types";
+import { BrowserClient } from "../../src/core/browser-client";
+import { GoodreadsService } from "../../src/services/goodreads-service";
+import type { Book, BookFilterOptions, Edition } from "../../src/types";
+import { ansi } from "../../src/utils/logger";
+import { Progress } from "../../src/utils/progress";
 
-const ansi = (color: string) => Bun.color(color, "ansi-16m") ?? "";
-const c = {
-  heading: ansi("#7ec8e3"),
-  success: ansi("#81c784"),
-  warn: ansi("#ffb74d"),
-  error: ansi("#e57373"),
-  dim: ansi("#9e9e9e"),
-  reset: "\x1b[0m",
-};
+const c = ansi;
 
 /**
  * Interface for the final book report item.
@@ -103,20 +97,20 @@ async function main(): Promise<void> {
   const { blogId, language, formats, sort } = args;
 
   if (!blogId) {
-    console.error(`${c.error}Error: Blog ID is required.${c.reset}`);
+    console.error(c.error("Error: Blog ID is required."));
     process.exit(1);
   }
 
   const invalidFormats = formats.filter((f) => !VALID_FORMATS.includes(f as ValidFormat));
   if (invalidFormats.length > 0) {
     console.error(
-      `${c.error}Error: Invalid format(s) '${invalidFormats.join(", ")}'. Valid: ${VALID_FORMATS.join(", ")}${c.reset}`,
+      c.error(`Error: Invalid format(s) '${invalidFormats.join(", ")}'. Valid: ${VALID_FORMATS.join(", ")}`),
     );
     process.exit(1);
   }
 
   console.log(
-    `${c.heading}Blog ${blogId}${c.reset} ${c.dim}| lang=${language} format=${formats.join(",") || "any"} sort=${sort}${c.reset}`,
+    `${c.heading(`Blog ${blogId}`)} ${c.gray(`| lang=${language} format=${formats.join(",") || "any"} sort=${sort}`)}`,
   );
 
   const browserClient = new BrowserClient();
@@ -126,7 +120,7 @@ async function main(): Promise<void> {
   try {
     const service = new GoodreadsService(browserClient);
 
-    console.log(`\n${c.heading}--- 1. Scraping blog ---${c.reset}`);
+    console.log(`\n${c.heading("--- 1. Scraping blog ---")}`);
     const blogData = await service.scrapeBlog(blogId);
 
     if (!blogData) {
@@ -135,14 +129,13 @@ async function main(): Promise<void> {
 
     const books: (Book & { section?: string })[] = blogData.mentionedBooks || [];
 
-    console.log(`${c.success}${books.length} books found.${c.reset}`);
+    console.log(c.success(`${books.length} books found.`));
 
-    console.log(`\n${c.heading}--- 2. Processing books ---${c.reset}`);
+    console.log(`\n${c.heading("--- 2. Processing books ---")}`);
+    const progress = new Progress(books.length);
 
-    for (const [index, bookRef] of books.entries()) {
-      console.log(
-        `\n${c.dim}[${index + 1}/${books.length}]${c.reset} ${bookRef.title || bookRef.id}`,
-      );
+    for (const [_index, bookRef] of books.entries()) {
+      progress.tick(bookRef.title || bookRef.id);
 
       const bookReportItem: BookReport = {
         ...bookRef,
@@ -186,10 +179,10 @@ async function main(): Promise<void> {
         });
 
         bookReportItem.editionsFound = uniqueEditions;
-        console.log(`  ${c.success}${uniqueEditions.length} editions found.${c.reset}`);
+        console.log(`  ${c.success(`${uniqueEditions.length} editions found.`)}`);
       } catch (err: unknown) {
         const errorMessage = err instanceof Error ? err.message : String(err);
-        console.warn(`  ${c.warn}Skipped:${c.reset} ${c.dim}${errorMessage}${c.reset}`);
+        console.warn(`  ${c.warn("Skipped:")} ${c.gray(errorMessage)}`);
         bookReportItem.processingError = errorMessage;
         errors.push({
           id: bookRef.id,
@@ -201,33 +194,32 @@ async function main(): Promise<void> {
       }
     }
 
-    console.log(`\n${c.heading}--- 3. Saving report ---${c.reset}`);
+    console.log(`\n${c.heading("--- 3. Saving report ---")}`);
     const reportFilename = `report-${blogId}-${language}.json`;
 
-    const fs = await import("node:fs");
     const path = await import("node:path");
     const finalPath = path.resolve(process.cwd(), reportFilename);
 
-    fs.writeFileSync(finalPath, JSON.stringify(finalReport, null, 2));
+    await Bun.write(finalPath, JSON.stringify(finalReport, null, 2));
 
     const withEditions = finalReport.filter((b) => b.editionsFound.length > 0).length;
     console.log(
-      `${c.success}Done.${c.reset} ${withEditions}/${finalReport.length} books with editions. ${c.dim}${finalPath}${c.reset}`,
+      `${c.success("Done.")} ${withEditions}/${finalReport.length} books with editions. ${c.gray(finalPath)}`,
     );
 
     if (errors.length > 0) {
-      console.log(`\n${c.warn}${errors.length} error(s):${c.reset}`);
+      console.log(`\n${c.warn(`${errors.length} error(s):`)}`);
       const grouped = Map.groupBy(errors, (err) => err.error);
       for (const [reason, items] of grouped) {
-        console.log(`\n  ${c.dim}${reason}${c.reset} ${c.warn}(${items.length})${c.reset}`);
+        console.log(`\n  ${c.gray(reason)} ${c.warn(`(${items.length})`)}`);
         for (const err of items) {
-          console.log(`    ${c.dim}-${c.reset} ${err.title}`);
+          console.log(`    ${c.gray("-")} ${err.title}`);
         }
       }
     }
   } catch (error: unknown) {
     const fatalMessage = error instanceof Error ? error.message : String(error);
-    console.error(`\n${c.error}Fatal error:${c.reset} ${fatalMessage}`);
+    console.error(`\n${c.error("Fatal error:")} ${fatalMessage}`);
   } finally {
     await browserClient.close();
   }

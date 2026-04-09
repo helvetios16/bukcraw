@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 const db = new Database("library.sqlite");
@@ -56,10 +56,11 @@ function toCSV(data: Record<string, unknown>[]): string {
   return `${headers}\n${rows.join("\n")}`;
 }
 
-function runExport() {
+async function runExport() {
   const { format, type } = parseArgs();
 
-  if (!existsSync(EXPORT_DIR)) {
+  const dirFile = Bun.file(EXPORT_DIR);
+  if (!(await dirFile.exists())) {
     mkdirSync(EXPORT_DIR);
   }
 
@@ -113,7 +114,7 @@ function runExport() {
       content = toCSV(results);
     }
 
-    writeFileSync(finalPath, content, "utf-8");
+    await Bun.write(finalPath, content);
     console.log(`✅ Export successful! File saved to:\n   ${finalPath}`);
     console.log(`📊 Total rows exported: ${results.length}`);
   } catch (err: unknown) {
