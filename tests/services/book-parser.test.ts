@@ -9,8 +9,7 @@ const validNextData = {
           legacyId: "12345",
           title: "Test Book",
           titleComplete: "Test Book: A Complete Title",
-          description:
-            "A test description with <b>bold</b> and <br/> line breaks",
+          description: "A test description with <b>bold</b> and <br/> line breaks",
           imageUrl: "https://images.gr-assets.com/books/test.jpg",
           webUrl: "/book/show/12345-test-book",
           details: {
@@ -39,43 +38,41 @@ describe("parseBookData", () => {
   test("returns valid Book from correct __NEXT_DATA__", () => {
     const book = parseBookData(validNextData);
     expect(book).not.toBeNull();
-    expect(book!.id).toBe("12345");
-    expect(book!.title).toBe("Test Book");
-    expect(book!.titleComplete).toBe("Test Book: A Complete Title");
-    expect(book!.webUrl).toBe("/book/show/12345-test-book");
-    expect(book!.coverImage).toBe(
-      "https://images.gr-assets.com/books/test.jpg",
-    );
-    expect(book!.pageCount).toBe(350);
-    expect(book!.language).toBe("English");
-    expect(book!.format).toBe("Hardcover");
+    expect(book?.id).toBe("12345");
+    expect(book?.title).toBe("Test Book");
+    expect(book?.titleComplete).toBe("Test Book: A Complete Title");
+    expect(book?.webUrl).toBe("/book/show/12345-test-book");
+    expect(book?.coverImage).toBe("https://images.gr-assets.com/books/test.jpg");
+    expect(book?.pageCount).toBe(350);
+    expect(book?.language).toBe("English");
+    expect(book?.format).toBe("Hardcover");
   });
 
   test("correctly resolves author from __ref", () => {
     const book = parseBookData(validNextData);
     expect(book).not.toBeNull();
-    expect(book!.author).toBe("Test Author");
+    expect(book?.author).toBe("Test Author");
   });
 
   test("correctly resolves work legacyId from __ref", () => {
     const book = parseBookData(validNextData);
     expect(book).not.toBeNull();
-    expect(book!.legacyId).toBe(789);
+    expect(book?.legacyId).toBe(789);
   });
 
   test("correctly resolves averageRating from work __ref", () => {
     const book = parseBookData(validNextData);
     expect(book).not.toBeNull();
-    expect(book!.averageRating).toBe(4.25);
+    expect(book?.averageRating).toBe(4.25);
   });
 
   test("strips HTML from description", () => {
     const book = parseBookData(validNextData);
     expect(book).not.toBeNull();
     // <br/> replaced with newline, <b>bold</b> stripped to "bold"
-    expect(book!.description).toContain("bold");
-    expect(book!.description).not.toContain("<b>");
-    expect(book!.description).not.toContain("<br/>");
+    expect(book?.description).toContain("bold");
+    expect(book?.description).not.toContain("<b>");
+    expect(book?.description).not.toContain("<br/>");
   });
 
   test("returns null for empty object", () => {
@@ -161,11 +158,11 @@ describe("parseBookData", () => {
     };
     const book = parseBookData(minimalData);
     expect(book).not.toBeNull();
-    expect(book!.id).toBe("555");
-    expect(book!.title).toBe("Minimal Book");
-    expect(book!.author).toBeUndefined();
-    expect(book!.pageCount).toBeUndefined();
-    expect(book!.language).toBeUndefined();
-    expect(book!.averageRating).toBeUndefined();
+    expect(book?.id).toBe("555");
+    expect(book?.title).toBe("Minimal Book");
+    expect(book?.author).toBeUndefined();
+    expect(book?.pageCount).toBeUndefined();
+    expect(book?.language).toBeUndefined();
+    expect(book?.averageRating).toBeUndefined();
   });
 });

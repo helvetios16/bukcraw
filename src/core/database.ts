@@ -117,7 +117,10 @@ export class DatabaseService {
   }
 
   private init(): void {
+    this.db.run("PRAGMA journal_mode = WAL;");
+    this.db.run("PRAGMA synchronous = NORMAL;");
     this.db.run("PRAGMA foreign_keys = ON;");
+    this.db.run("PRAGMA cache_size = -64000;"); // 64MB cache
 
     // Schema version tracking
     this.db.run(`
@@ -127,9 +130,9 @@ export class DatabaseService {
       );
     `);
 
-    const currentVersion = this.db.prepare(
-      "SELECT MAX(version) as v FROM schema_version",
-    ).get() as { v: number | null } | null;
+    const currentVersion = this.db
+      .prepare("SELECT MAX(version) as v FROM schema_version")
+      .get() as { v: number | null } | null;
 
     if (!currentVersion?.v) {
       this.db.run("INSERT OR IGNORE INTO schema_version (version) VALUES (1)");

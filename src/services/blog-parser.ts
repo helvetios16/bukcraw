@@ -193,7 +193,9 @@ export function parseBlogHtml(html: string, url?: string): Blog | null {
               title = text.replace(/\s+/g, " ");
             }
 
-            if (!tryMergeWithLast(booksWithContext, numericId, { title, coverImage }, currentSection)) {
+            if (
+              !tryMergeWithLast(booksWithContext, numericId, { title, coverImage }, currentSection)
+            ) {
               booksWithContext.push({
                 id: fullId,
                 title,

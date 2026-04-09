@@ -30,13 +30,9 @@ describe("hashUrl", () => {
 
   test("throws on non-string input", () => {
     // biome-ignore lint/suspicious/noExplicitAny: testing invalid input
-    expect(() => hashUrl(null as any)).toThrow(
-      "Invalid URL provided for hashing",
-    );
+    expect(() => hashUrl(null as any)).toThrow("Invalid URL provided for hashing");
     // biome-ignore lint/suspicious/noExplicitAny: testing invalid input
-    expect(() => hashUrl(undefined as any)).toThrow(
-      "Invalid URL provided for hashing",
-    );
+    expect(() => hashUrl(undefined as any)).toThrow("Invalid URL provided for hashing");
   });
 });
 

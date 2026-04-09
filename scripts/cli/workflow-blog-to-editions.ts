@@ -104,7 +104,9 @@ async function main(): Promise<void> {
   const invalidFormats = formats.filter((f) => !VALID_FORMATS.includes(f as ValidFormat));
   if (invalidFormats.length > 0) {
     console.error(
-      c.error(`Error: Invalid format(s) '${invalidFormats.join(", ")}'. Valid: ${VALID_FORMATS.join(", ")}`),
+      c.error(
+        `Error: Invalid format(s) '${invalidFormats.join(", ")}'. Valid: ${VALID_FORMATS.join(", ")}`,
+      ),
     );
     process.exit(1);
   }

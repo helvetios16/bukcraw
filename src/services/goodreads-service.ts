@@ -18,11 +18,20 @@ import { CacheManager } from "../core/cache-manager";
 import { DatabaseService } from "../core/database";
 import { HttpClient } from "../core/http-client";
 import { RateLimiter } from "../core/rate-limiter";
-import { type Blog, type Book, type BookFilterOptions, type Edition, isBlog, isEditionsFilters } from "../types";
+import {
+  type Blog,
+  type Book,
+  type BookFilterOptions,
+  type Edition,
+  isBlog,
+  isEditionsFilters,
+} from "../types";
+import { pMap } from "../utils/concurrency";
 import { Logger } from "../utils/logger";
 import { getErrorMessage, isValidBookId } from "../utils/util";
 
 const log = new Logger("GoodreadsService");
+
 import { parseBlogHtml } from "./blog-parser";
 import { parseBookData } from "./book-parser";
 import {
@@ -305,7 +314,7 @@ export class GoodreadsService {
     try {
       const content = await this.http?.get(url);
 
-      if (!this.http?.isBlocked(content)) {
+      if (content && !this.http?.isBlocked(content)) {
         this.stats.httpSuccess++;
         return { content, method: "http" };
       }
@@ -404,13 +413,12 @@ export class GoodreadsService {
     url: string,
   ): Promise<Book | null> {
     const nextData = await this.page?.evaluate((el) => el.textContent, element);
-    return this.handleNextDataJson(nextData, url);
+    return this.handleNextDataJson(nextData ?? null, url);
   }
 
   private async processNextDataFromHtml(html: string, url: string): Promise<Book | null> {
-    // Regex simple para extraer el contenido de <script id="__NEXT_DATA__">...</script>
     const match = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-    return this.handleNextDataJson(match ? match[1] : null, url);
+    return this.handleNextDataJson(match?.[1] ?? null, url);
   }
 
   private async handleNextDataJson(jsonStr: string | null, url: string): Promise<Book | null> {
@@ -510,17 +518,28 @@ export class GoodreadsService {
     allEditions.push(...page1Editions);
 
     const pagination = extractPaginationInfo(page1Content);
-    log.info(`Pagination: ${pagination.totalPages} pages total.`);
+    log.info(`Pagination: ${pagination.totalPages} total pages.`);
 
-    // Next Pages
+    // Next Pages - Parallel fetch
     if (pagination.totalPages > 1) {
-      for (let i = 2; i <= pagination.totalPages; i++) {
-        const pageUrl = `${baseUrlWithParams}&page=${i}`;
-        const { content, fromCache } = await this.getPageContent(pageUrl);
+      const pageUrls = Array.from(
+        { length: pagination.totalPages - 1 },
+        (_, i) => `${baseUrlWithParams}&page=${i + 2}`,
+      );
 
-        scrapedUrls.push(pageUrl);
-        const pageEditions = parseEditionsList(content);
-        allEditions.push(...pageEditions);
+      const results = await pMap(
+        pageUrls,
+        async (pageUrl) => {
+          const { content } = await this.getPageContent(pageUrl);
+          const editions = parseEditionsList(content);
+          return { pageUrl, editions };
+        },
+        3, // concurrency limit
+      );
+
+      for (const result of results) {
+        scrapedUrls.push(result.pageUrl);
+        allEditions.push(...result.editions);
       }
     }
 

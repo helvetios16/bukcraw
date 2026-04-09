@@ -3,8 +3,8 @@
 import {
   INITIAL_RETRY_DELAY_MS,
   MAX_RETRIES,
-  RETRYABLE_STATUS_CODES,
   RETRY_BACKOFF_MULTIPLIER,
+  RETRYABLE_STATUS_CODES,
   USER_AGENT,
 } from "../config/constants";
 import { delay } from "../utils/util";
@@ -13,7 +13,19 @@ import { delay } from "../utils/util";
  * Interface for custom HTTP headers.
  */
 interface HttpHeaders {
-  readonly [key: string]: string;
+  readonly "User-Agent": string;
+  readonly Accept: string;
+  readonly "Accept-Language": string;
+  readonly "Accept-Encoding"?: string;
+  readonly "Cache-Control": string;
+  readonly Pragma: string;
+  readonly "Sec-Fetch-Dest": string;
+  readonly "Sec-Fetch-Mode": string;
+  readonly "Sec-Fetch-Site": string;
+  readonly "Sec-Fetch-User": string;
+  readonly "Upgrade-Insecure-Requests": string;
+  readonly Referer: string;
+  readonly Cookie?: string;
 }
 
 /**
@@ -39,6 +51,7 @@ export class HttpClient {
       Accept:
         "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,webp,application/json,*/*;q=0.8",
       "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+      "Accept-Encoding": "gzip, deflate",
       "Cache-Control": "no-cache",
       Pragma: "no-cache",
       "Sec-Fetch-Dest": "document",
@@ -50,7 +63,8 @@ export class HttpClient {
     };
 
     if (this.cookies) {
-      this.defaultHeaders.Cookie = this.cookies;
+      const headersWithCookie: HttpHeaders = { ...this.defaultHeaders, Cookie: this.cookies };
+      this.defaultHeaders = headersWithCookie;
     }
   }
 
@@ -74,11 +88,16 @@ export class HttpClient {
 
         if (!response.ok) {
           const status = response.status;
-          if (attempt < MAX_RETRIES && RETRYABLE_STATUS_CODES.includes(status as 429 | 500 | 502 | 503 | 504)) {
+          if (
+            attempt < MAX_RETRIES &&
+            RETRYABLE_STATUS_CODES.includes(status as 429 | 500 | 502 | 503 | 504)
+          ) {
             const retryAfter = response.headers.get("Retry-After");
             const backoff = retryAfter
               ? parseInt(retryAfter, 10) * 1000
-              : INITIAL_RETRY_DELAY_MS * RETRY_BACKOFF_MULTIPLIER ** attempt * (0.5 + Math.random());
+              : INITIAL_RETRY_DELAY_MS *
+                RETRY_BACKOFF_MULTIPLIER ** attempt *
+                (0.5 + Math.random());
             await delay(backoff);
             continue;
           }
@@ -89,7 +108,8 @@ export class HttpClient {
       } catch (error: unknown) {
         lastError = error instanceof Error ? error : new Error(String(error));
         if (attempt < MAX_RETRIES) {
-          const backoff = INITIAL_RETRY_DELAY_MS * RETRY_BACKOFF_MULTIPLIER ** attempt * (0.5 + Math.random());
+          const backoff =
+            INITIAL_RETRY_DELAY_MS * RETRY_BACKOFF_MULTIPLIER ** attempt * (0.5 + Math.random());
           await delay(backoff);
         }
       }

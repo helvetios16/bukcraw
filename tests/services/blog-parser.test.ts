@@ -44,12 +44,10 @@ describe("parseBlogHtml", () => {
   test("parses valid blog HTML correctly", () => {
     const result = parseBlogHtml(validBlogHtml);
     expect(result).not.toBeNull();
-    expect(result!.title).toBe("Best Books of 2024");
-    expect(result!.id).toBe("3046");
-    expect(result!.description).toBe("A blog about books");
-    expect(result!.webUrl).toBe(
-      "https://www.goodreads.com/blog/show/3046-best-books",
-    );
+    expect(result?.title).toBe("Best Books of 2024");
+    expect(result?.id).toBe("3046");
+    expect(result?.description).toBe("A blog about books");
+    expect(result?.webUrl).toBe("https://www.goodreads.com/blog/show/3046-best-books");
   });
 
   test("deduplicates books by numeric ID", () => {
@@ -57,7 +55,7 @@ describe("parseBlogHtml", () => {
     expect(result).not.toBeNull();
     // 12345 appears in both .js-tooltipTrigger and .bookInfoFullRow,
     // but should be deduplicated to 1 entry
-    const ids = result!.mentionedBooks!.map((b) => b.id.split("-")[0]);
+    const ids = result?.mentionedBooks?.map((b) => b.id.split("-")[0]);
     const uniqueIds = new Set(ids);
     expect(uniqueIds.size).toBe(ids.length);
   });
@@ -66,13 +64,13 @@ describe("parseBlogHtml", () => {
     const result = parseBlogHtml(validBlogHtml);
     expect(result).not.toBeNull();
     // Two unique books: 12345 and 67890
-    expect(result!.mentionedBooks).toHaveLength(2);
+    expect(result?.mentionedBooks).toHaveLength(2);
   });
 
   test("books have correct IDs", () => {
     const result = parseBlogHtml(validBlogHtml);
     expect(result).not.toBeNull();
-    const numericIds = result!.mentionedBooks!.map((b) => b.id.split("-")[0]);
+    const numericIds = result?.mentionedBooks?.map((b) => b.id.split("-")[0]);
     expect(numericIds).toContain("12345");
     expect(numericIds).toContain("67890");
   });
@@ -80,41 +78,29 @@ describe("parseBlogHtml", () => {
   test("books have correct titles", () => {
     const result = parseBlogHtml(validBlogHtml);
     expect(result).not.toBeNull();
-    const book12345 = result!.mentionedBooks!.find(
-      (b) => b.id.split("-")[0] === "12345",
-    );
+    const book12345 = result?.mentionedBooks?.find((b) => b.id.split("-")[0] === "12345");
     // The bookInfoFullRow merge should update the title
-    expect(book12345!.title).toBe("The Great Novel: Extended Title");
+    expect(book12345?.title).toBe("The Great Novel: Extended Title");
 
-    const book67890 = result!.mentionedBooks!.find(
-      (b) => b.id.split("-")[0] === "67890",
-    );
-    expect(book67890!.title).toBe("Another Book");
+    const book67890 = result?.mentionedBooks?.find((b) => b.id.split("-")[0] === "67890");
+    expect(book67890?.title).toBe("Another Book");
   });
 
   test("books have cover images", () => {
     const result = parseBlogHtml(validBlogHtml);
     expect(result).not.toBeNull();
-    const book67890 = result!.mentionedBooks!.find(
-      (b) => b.id.split("-")[0] === "67890",
-    );
-    expect(book67890!.coverImage).toBe(
-      "https://images.gr-assets.com/books/cover2.jpg",
-    );
+    const book67890 = result?.mentionedBooks?.find((b) => b.id.split("-")[0] === "67890");
+    expect(book67890?.coverImage).toBe("https://images.gr-assets.com/books/cover2.jpg");
   });
 
   test("books have section context from headers", () => {
     const result = parseBlogHtml(validBlogHtml);
     expect(result).not.toBeNull();
-    const book12345 = result!.mentionedBooks!.find(
-      (b) => b.id.split("-")[0] === "12345",
-    );
-    expect(book12345!.section).toBe("Fiction");
+    const book12345 = result?.mentionedBooks?.find((b) => b.id.split("-")[0] === "12345");
+    expect(book12345?.section).toBe("Fiction");
 
-    const book67890 = result!.mentionedBooks!.find(
-      (b) => b.id.split("-")[0] === "67890",
-    );
-    expect(book67890!.section).toBe("Non-Fiction");
+    const book67890 = result?.mentionedBooks?.find((b) => b.id.split("-")[0] === "67890");
+    expect(book67890?.section).toBe("Non-Fiction");
   });
 
   test("returns null for completely invalid HTML", () => {
@@ -132,16 +118,16 @@ describe("parseBlogHtml", () => {
   test("handles HTML with no books", () => {
     const result = parseBlogHtml(noBooksHtml);
     expect(result).not.toBeNull();
-    expect(result!.title).toBe("Empty Blog Post");
-    expect(result!.id).toBe("9999");
-    expect(result!.mentionedBooks).toHaveLength(0);
+    expect(result?.title).toBe("Empty Blog Post");
+    expect(result?.id).toBe("9999");
+    expect(result?.mentionedBooks).toHaveLength(0);
   });
 
   test("uses explicit URL parameter over og:url when provided", () => {
     const customUrl = "https://www.goodreads.com/blog/show/5555-custom";
     const result = parseBlogHtml(validBlogHtml, customUrl);
     expect(result).not.toBeNull();
-    expect(result!.webUrl).toBe(customUrl);
-    expect(result!.id).toBe("5555");
+    expect(result?.webUrl).toBe(customUrl);
+    expect(result?.id).toBe("5555");
   });
 });

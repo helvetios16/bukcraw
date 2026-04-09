@@ -173,9 +173,9 @@
         <!-- Pagination -->
         <div id="paginationBar" class="hidden mt-6 flex flex-col items-center gap-3">
             <div class="flex items-center gap-2">
-                <button id="prevPage" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">&laquo; Anterior</button>
+                <button type="button" id="prevPage" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">&laquo; Anterior</button>
                 <span id="pageInfo" class="text-sm text-gray-500 min-w-[100px] text-center"></span>
-                <button id="nextPage" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Siguiente &raquo;</button>
+                <button type="button" id="nextPage" class="bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Siguiente &raquo;</button>
             </div>
             <div class="flex items-center gap-2">
                 <label for="pageSize" class="text-xs text-gray-600">Por pagina:</label>
@@ -299,7 +299,7 @@
         });
 
         function escapeHtml(str) {
-            if (!str) return '';
+            if (!str) { return ''; }
             return String(str)
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
@@ -309,10 +309,10 @@
         }
 
         function sanitizeUrl(url) {
-            if (!url) return '';
+            if (!url) { return ''; }
             try {
                 const parsed = new URL(url);
-                if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return url;
+                if (parsed.protocol === 'https:' || parsed.protocol === 'http:') { return url; }
             } catch {}
             return '';
         }
@@ -474,7 +474,7 @@
 
             if (pageSize > 0) {
                 const totalPages = Math.ceil(totalFiltered / pageSize);
-                if (currentPage > totalPages) currentPage = totalPages || 1;
+                if (currentPage > totalPages) { currentPage = totalPages || 1; }
                 const start = (currentPage - 1) * pageSize;
                 paginatedBooks = filteredBooks.slice(start, start + pageSize);
 

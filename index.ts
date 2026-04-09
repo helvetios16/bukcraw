@@ -26,31 +26,35 @@ async function main(): Promise<void> {
     }
 
     console.log(`\n${ansi.heading(`--- 2. Scraping ${books.length} books from blog ---`)}`);
-    await pMap(books, async (mentionedBook, index) => {
-      try {
-        const book = await goodreadsService.scrapeBook(mentionedBook.id);
-        if (!book?.legacyId) {
-          return;
+    await pMap(
+      books,
+      async (mentionedBook, index) => {
+        try {
+          const book = await goodreadsService.scrapeBook(mentionedBook.id);
+          if (!book?.legacyId) {
+            return;
+          }
+
+          console.log(
+            `  ${ansi.info(`[${index + 1}/${books.length}]`)} ${ansi.success(book.title)} ${ansi.gray(`(${book.pageCount ?? "?"} pages)`)}`,
+          );
+
+          await goodreadsService.scrapeEditionsFilters(book.legacyId);
+
+          for (const format of ["Kindle Edition", "ebook"]) {
+            await goodreadsService.scrapeFilteredEditions(book.legacyId, {
+              language: "spa",
+              format,
+            });
+          }
+        } catch (error: unknown) {
+          console.warn(
+            `  ${ansi.warn("Skipped")} ${mentionedBook.id}: ${ansi.gray(getErrorMessage(error))}`,
+          );
         }
-
-        console.log(
-          `  ${ansi.info(`[${index + 1}/${books.length}]`)} ${ansi.success(book.title)} ${ansi.gray(`(${book.pageCount ?? "?"} pages)`)}`,
-        );
-
-        await goodreadsService.scrapeEditionsFilters(book.legacyId);
-
-        for (const format of ["Kindle Edition", "ebook"]) {
-          await goodreadsService.scrapeFilteredEditions(book.legacyId, {
-            language: "spa",
-            format,
-          });
-        }
-      } catch (error: unknown) {
-        console.warn(
-          `  ${ansi.warn("Skipped")} ${mentionedBook.id}: ${ansi.gray(getErrorMessage(error))}`,
-        );
-      }
-    }, 2);
+      },
+      2,
+    );
   } catch (error: unknown) {
     const message = getErrorMessage(error);
     console.error(`${ansi.error("Scraping error:")} ${message}`);

@@ -78,59 +78,55 @@ describe("parseEditionsList", () => {
 
   test("first edition has correct title", () => {
     const editions = parseEditionsList(editionsFixtureHtml);
-    expect(editions[0]!.title).toBe("Edition One");
+    expect(editions[0]?.title).toBe("Edition One");
   });
 
   test("first edition has correct link", () => {
     const editions = parseEditionsList(editionsFixtureHtml);
-    expect(editions[0]!.link).toBe("/book/show/111-edition-one");
+    expect(editions[0]?.link).toBe("/book/show/111-edition-one");
   });
 
   test("first edition has correct coverImage", () => {
     const editions = parseEditionsList(editionsFixtureHtml);
-    expect(editions[0]!.coverImage).toBe(
-      "https://images.gr-assets.com/books/ed1.jpg",
-    );
+    expect(editions[0]?.coverImage).toBe("https://images.gr-assets.com/books/ed1.jpg");
   });
 
   test("first edition has format Paperback", () => {
     const editions = parseEditionsList(editionsFixtureHtml);
-    expect(editions[0]!.format).toBe("Paperback");
+    expect(editions[0]?.format).toBe("Paperback");
   });
 
   test("first edition has 300 pages", () => {
     const editions = parseEditionsList(editionsFixtureHtml);
-    expect(editions[0]!.pages).toBe(300);
+    expect(editions[0]?.pages).toBe(300);
   });
 
   test("first edition has language Spanish", () => {
     const editions = parseEditionsList(editionsFixtureHtml);
-    expect(editions[0]!.language).toBe("Spanish");
+    expect(editions[0]?.language).toBe("Spanish");
   });
 
   test("first edition has averageRating 4.50", () => {
     const editions = parseEditionsList(editionsFixtureHtml);
-    expect(editions[0]!.averageRating).toBe(4.5);
+    expect(editions[0]?.averageRating).toBe(4.5);
   });
 
   test("first edition has publisher Publisher A", () => {
     const editions = parseEditionsList(editionsFixtureHtml);
-    expect(editions[0]!.publisher).toBe("Publisher A");
+    expect(editions[0]?.publisher).toBe("Publisher A");
   });
 
   test("first edition has publishedDate 2020", () => {
     const editions = parseEditionsList(editionsFixtureHtml);
-    expect(editions[0]!.publishedDate).toBe("2020");
+    expect(editions[0]?.publishedDate).toBe("2020");
   });
 
   test("second edition has correct data", () => {
     const editions = parseEditionsList(editionsFixtureHtml);
-    const second = editions[1]!;
-    expect(second.title).toBe("Edition Two");
+    const second = editions[1];
+    expect(second?.title).toBe("Edition Two");
     expect(second.link).toBe("/book/show/222-edition-two");
-    expect(second.coverImage).toBe(
-      "https://images.gr-assets.com/books/ed2.jpg",
-    );
+    expect(second.coverImage).toBe("https://images.gr-assets.com/books/ed2.jpg");
     expect(second.format).toBe("Kindle Edition");
     expect(second.pages).toBe(280);
     expect(second.language).toBe("English");
@@ -155,7 +151,7 @@ describe("parseEditionsHtml", () => {
   test("extracts sort options", () => {
     const filters = parseEditionsHtml(editionsFixtureHtml);
     expect(filters).not.toBeNull();
-    const sortValues = filters!.sort.map((o) => o.value);
+    const sortValues = filters?.sort.map((o) => o.value);
     expect(sortValues).toContain("num_ratings");
     expect(sortValues).toContain("date_pub_edition_desc");
   });
@@ -163,16 +159,16 @@ describe("parseEditionsHtml", () => {
   test("sort option has selected flag", () => {
     const filters = parseEditionsHtml(editionsFixtureHtml);
     expect(filters).not.toBeNull();
-    const selected = filters!.sort.find((o) => o.selected);
+    const selected = filters?.sort.find((o) => o.selected);
     expect(selected).toBeDefined();
-    expect(selected!.value).toBe("num_ratings");
-    expect(selected!.label).toBe("Most Popular");
+    expect(selected?.value).toBe("num_ratings");
+    expect(selected?.label).toBe("Most Popular");
   });
 
   test("extracts format options", () => {
     const filters = parseEditionsHtml(editionsFixtureHtml);
     expect(filters).not.toBeNull();
-    const formatValues = filters!.format.map((o) => o.value);
+    const formatValues = filters?.format.map((o) => o.value);
     expect(formatValues).toContain("Kindle Edition");
     expect(formatValues).toContain("Paperback");
   });
@@ -180,7 +176,7 @@ describe("parseEditionsHtml", () => {
   test("extracts language options", () => {
     const filters = parseEditionsHtml(editionsFixtureHtml);
     expect(filters).not.toBeNull();
-    const langValues = filters!.language.map((o) => o.value);
+    const langValues = filters?.language.map((o) => o.value);
     expect(langValues).toContain("spa");
     expect(langValues).toContain("eng");
   });
@@ -190,9 +186,9 @@ describe("parseEditionsHtml", () => {
     expect(filters).not.toBeNull();
     // The empty "" value options ("Sort", "All Formats", "All Languages") should be excluded
     const allValues = [
-      ...filters!.sort.map((o) => o.value),
-      ...filters!.format.map((o) => o.value),
-      ...filters!.language.map((o) => o.value),
+      ...(filters?.sort.map((o) => o.value) ?? []),
+      ...(filters?.format.map((o) => o.value) ?? []),
+      ...(filters?.language.map((o) => o.value) ?? []),
     ];
     expect(allValues).not.toContain("");
   });
@@ -202,9 +198,9 @@ describe("parseEditionsHtml", () => {
     const filters = parseEditionsHtml(html);
     // Function returns an object with empty arrays when selects are missing
     expect(filters).not.toBeNull();
-    expect(filters!.sort).toHaveLength(0);
-    expect(filters!.format).toHaveLength(0);
-    expect(filters!.language).toHaveLength(0);
+    expect(filters?.sort).toHaveLength(0);
+    expect(filters?.format).toHaveLength(0);
+    expect(filters?.language).toHaveLength(0);
   });
 });
 
