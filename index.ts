@@ -5,17 +5,9 @@
 
 import { BrowserClient } from "./src/core/browser-client";
 import { GoodreadsService } from "./src/services/goodreads-service";
+import { pMap } from "./src/utils/concurrency";
+import { ansi } from "./src/utils/logger";
 import { getErrorMessage } from "./src/utils/util";
-
-const ansi = (color: string) => Bun.color(color, "ansi-16m") ?? "";
-const c = {
-  heading: ansi("#7ec8e3"),
-  success: ansi("#81c784"),
-  warn: ansi("#ffb74d"),
-  error: ansi("#e57373"),
-  dim: ansi("#9e9e9e"),
-  reset: "\x1b[0m",
-};
 
 async function main(): Promise<void> {
   const browserClient = new BrowserClient();
@@ -24,25 +16,25 @@ async function main(): Promise<void> {
 
     const goodreadsService = new GoodreadsService(browserClient);
 
-    console.log(`${c.heading}--- 1. Scraping blog ---${c.reset}`);
+    console.log(ansi.heading("--- 1. Scraping blog ---"));
     const blog = await goodreadsService.scrapeBlog(blogId);
 
     const books = blog?.mentionedBooks ?? [];
     if (books.length === 0) {
-      console.log(`${c.warn}No books found in blog.${c.reset}`);
+      console.log(ansi.warn("No books found in blog."));
       return;
     }
 
-    console.log(`\n${c.heading}--- 2. Scraping ${books.length} books from blog ---${c.reset}`);
-    for (const mentionedBook of books) {
+    console.log(`\n${ansi.heading(`--- 2. Scraping ${books.length} books from blog ---`)}`);
+    await pMap(books, async (mentionedBook, index) => {
       try {
         const book = await goodreadsService.scrapeBook(mentionedBook.id);
         if (!book?.legacyId) {
-          continue;
+          return;
         }
 
         console.log(
-          `  ${c.success}${book.title}${c.reset} ${c.dim}(${book.pageCount ?? "?"} pages)${c.reset}`,
+          `  ${ansi.info(`[${index + 1}/${books.length}]`)} ${ansi.success(book.title)} ${ansi.gray(`(${book.pageCount ?? "?"} pages)`)}`,
         );
 
         await goodreadsService.scrapeEditionsFilters(book.legacyId);
@@ -55,13 +47,13 @@ async function main(): Promise<void> {
         }
       } catch (error: unknown) {
         console.warn(
-          `  ${c.warn}Skipped${c.reset} ${mentionedBook.id}: ${c.dim}${getErrorMessage(error)}${c.reset}`,
+          `  ${ansi.warn("Skipped")} ${mentionedBook.id}: ${ansi.gray(getErrorMessage(error))}`,
         );
       }
-    }
+    }, 2);
   } catch (error: unknown) {
     const message = getErrorMessage(error);
-    console.error(`${c.error}Scraping error:${c.reset} ${message}`);
+    console.error(`${ansi.error("Scraping error:")} ${message}`);
   } finally {
     await browserClient.close();
   }

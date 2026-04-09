@@ -5,10 +5,12 @@
   "private": true,
   "scripts": {
     "start": "bun run index.ts",
-    "cache:clear": "bun run scripts/clear-cache.ts",
-    "lint": "biome lint --unsafe --write .",
+    "cache:clear": "bun run scripts/cache/clear.ts",
+    "lint": "biome lint --write .",
+    "lint:fix": "biome lint --unsafe --write .",
     "format": "biome format --write .",
-    "check": "biome check --unsafe --write ."
+    "check": "biome check --write .",
+    "test": "bun test"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.10",
