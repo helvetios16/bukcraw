@@ -240,13 +240,17 @@ async function main(): Promise<void> {
     };
 
     console.log(`\n${c.heading("--- 3. Saving report ---")}`);
+    const { mkdirSync } = await import("node:fs");
+    const path = await import("node:path");
+
+    const reportsDir = path.resolve(process.cwd(), ".reports");
+    mkdirSync(reportsDir, { recursive: true });
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const finalOutputName =
       output === "report-database-books.json" ? `report-database-books-${timestamp}.json` : output;
 
-    const path = await import("node:path");
-    const finalPath = path.resolve(process.cwd(), finalOutputName);
+    const finalPath = path.resolve(reportsDir, finalOutputName);
 
     await Bun.write(finalPath, JSON.stringify(finalReport, null, 2));
 

@@ -197,10 +197,14 @@ async function main(): Promise<void> {
     }
 
     console.log(`\n${c.heading("--- 3. Saving report ---")}`);
-    const reportFilename = `report-${blogId}-${language}.json`;
-
+    const { mkdirSync } = await import("node:fs");
     const path = await import("node:path");
-    const finalPath = path.resolve(process.cwd(), reportFilename);
+
+    const reportsDir = path.resolve(process.cwd(), ".reports");
+    mkdirSync(reportsDir, { recursive: true });
+
+    const reportFilename = `report-${blogId}-${language}.json`;
+    const finalPath = path.resolve(reportsDir, reportFilename);
 
     await Bun.write(finalPath, JSON.stringify(finalReport, null, 2));
 
