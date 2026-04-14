@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "start": "bun run index.ts",
+    "pipeline": "bun run scripts/cli/pipeline.ts",
     "cache:clear": "bun run scripts/cache/clear.ts",
     "lint": "biome lint --write .",
     "lint:fix": "biome lint --unsafe --write .",
