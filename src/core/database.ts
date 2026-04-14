@@ -203,6 +203,17 @@ export class DatabaseService {
 
     this.db.run("CREATE INDEX IF NOT EXISTS idx_editions_book ON editions(book_legacy_id);");
     this.db.run("CREATE INDEX IF NOT EXISTS idx_editions_lang ON editions(language);");
+
+    // 5. Tabla de metadatos HTTP (ETag / Last-Modified)
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS http_metadata (
+        url_hash TEXT PRIMARY KEY,
+        url TEXT NOT NULL,
+        etag TEXT,
+        last_modified TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
   }
 
   // --- MÉTODOS DE LECTURA ---
@@ -384,6 +395,59 @@ export class DatabaseService {
       $blogId: blogId,
       $bookId: bookId,
     });
+  }
+
+  // --- HTTP METADATA (ETag / Last-Modified) ---
+
+  public getHttpMetadata(
+    urlHash: string,
+  ): { etag?: string; lastModified?: string; updatedAt: string } | null {
+    const row = this.db
+      .prepare("SELECT etag, last_modified, updated_at FROM http_metadata WHERE url_hash = ?")
+      .get(urlHash) as { etag?: string; last_modified?: string; updated_at: string } | null;
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      etag: row.etag || undefined,
+      lastModified: row.last_modified || undefined,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  public saveHttpMetadata(
+    urlHash: string,
+    url: string,
+    etag?: string,
+    lastModified?: string,
+  ): void {
+    this.db
+      .prepare(
+        `INSERT INTO http_metadata (url_hash, url, etag, last_modified, updated_at)
+         VALUES ($hash, $url, $etag, $lastModified, CURRENT_TIMESTAMP)
+         ON CONFLICT(url_hash) DO UPDATE SET
+           etag = excluded.etag,
+           last_modified = excluded.last_modified,
+           updated_at = CURRENT_TIMESTAMP`,
+      )
+      .run({
+        $hash: urlHash,
+        $url: url,
+        $etag: etag || null,
+        $lastModified: lastModified || null,
+      });
+  }
+
+  public refreshHttpMetadata(urlHash: string): void {
+    this.db
+      .prepare("UPDATE http_metadata SET updated_at = CURRENT_TIMESTAMP WHERE url_hash = ?")
+      .run(urlHash);
+  }
+
+  public refreshBookTimestamp(bookId: string): void {
+    this.db.prepare("UPDATE books SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(bookId);
   }
 
   public close(): void {

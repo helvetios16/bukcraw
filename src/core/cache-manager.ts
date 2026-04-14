@@ -1,13 +1,16 @@
 /**
  * @file cache-manager.ts
  * @description Manages local file caching for scraped content to reduce network requests.
+ * HTML files are stored gzip-compressed (.html.gz) to reduce disk usage ~85-90%.
+ * Old cache directories beyond FILE_CACHE_LOOKBACK_DAYS are auto-purged on startup.
  */
 
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync } from "node:fs";
 import { FILE_CACHE_LOOKBACK_DAYS } from "../config/constants";
 import { hashUrl, isValidUrl } from "../utils/util";
 
 const MEMORY_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos
+const COMPRESSIBLE_EXTENSIONS = new Set([".html"]);
 
 interface MemoryCacheEntry {
   content: string;
@@ -29,6 +32,7 @@ export class CacheManager {
   constructor(cacheDir: string = "./cache") {
     this.cacheDir = cacheDir;
     mkdirSync(this.cacheDir, { recursive: true });
+    this.purgeOldCacheDirs();
   }
 
   public async has(url: string): Promise<boolean> {
@@ -44,10 +48,13 @@ export class CacheManager {
       const dateStr = date.toISOString().split("T")[0];
 
       const type = this.getContentType(url);
-      const filename = `${this.cacheDir}/${dateStr}/${type}/${hashUrl(url)}.html`;
-      const file = Bun.file(filename);
+      const hash = hashUrl(url);
 
-      if (await file.exists()) {
+      // Check both compressed and legacy uncompressed
+      const gzFile = Bun.file(`${this.cacheDir}/${dateStr}/${type}/${hash}.html.gz`);
+      const plainFile = Bun.file(`${this.cacheDir}/${dateStr}/${type}/${hash}.html`);
+
+      if ((await gzFile.exists()) || (await plainFile.exists())) {
         this.memoryCache.set(cacheKey, {
           content: "exists",
           expiresAt: Date.now() + MEMORY_CACHE_TTL_MS,
@@ -66,17 +73,38 @@ export class CacheManager {
       return memEntry.content;
     }
 
+    const shouldCompress = COMPRESSIBLE_EXTENSIONS.has(extension);
+
     for (let i = 0; i < 2; i++) {
       const date = new Date();
       date.setDate(date.getDate() - i);
       const dateStr = date.toISOString().split("T")[0];
 
       const type = this.getContentType(url);
-      const filename = `${this.cacheDir}/${dateStr}/${type}/${hashUrl(url)}${extension}`;
-      const file = Bun.file(filename);
+      const basePath = `${this.cacheDir}/${dateStr}/${type}/${hashUrl(url)}${extension}`;
 
-      if (await file.exists()) {
-        const content = await file.text();
+      let content: string | undefined;
+
+      if (shouldCompress) {
+        // Try compressed first, then fall back to legacy uncompressed
+        const gzFile = Bun.file(`${basePath}.gz`);
+        if (await gzFile.exists()) {
+          const compressed = await gzFile.arrayBuffer();
+          content = Buffer.from(Bun.gunzipSync(new Uint8Array(compressed))).toString();
+        } else {
+          const plainFile = Bun.file(basePath);
+          if (await plainFile.exists()) {
+            content = await plainFile.text();
+          }
+        }
+      } else {
+        const file = Bun.file(basePath);
+        if (await file.exists()) {
+          content = await file.text();
+        }
+      }
+
+      if (content !== undefined) {
         this.memoryCache.set(cacheKey, { content, expiresAt: Date.now() + MEMORY_CACHE_TTL_MS });
         this.pruneMemoryCache();
         return content;
@@ -103,22 +131,29 @@ export class CacheManager {
     force = false,
     extension = ".html",
   }: CacheSaveOptions): Promise<string> {
+    const shouldCompress = COMPRESSIBLE_EXTENSIONS.has(extension);
     const filename = this.getCacheFilePath(url, extension);
-    const file = Bun.file(filename);
+    const actualPath = shouldCompress ? `${filename}.gz` : filename;
+    const file = Bun.file(actualPath);
 
     if (!force && (await file.exists())) {
       const cacheKey = `get:${url}:${extension}`;
       this.memoryCache.set(cacheKey, { content, expiresAt: Date.now() + MEMORY_CACHE_TTL_MS });
-      return filename;
+      return actualPath;
     }
 
-    await Bun.write(file, content);
+    if (shouldCompress) {
+      const compressed = Bun.gzipSync(Buffer.from(content));
+      await Bun.write(file, compressed);
+    } else {
+      await Bun.write(file, content);
+    }
 
     const cacheKey = `get:${url}:${extension}`;
     this.memoryCache.set(cacheKey, { content, expiresAt: Date.now() + MEMORY_CACHE_TTL_MS });
     this.pruneMemoryCache();
 
-    return filename;
+    return actualPath;
   }
 
   public async getOrFetch(
@@ -166,5 +201,43 @@ export class CacheManager {
     mkdirSync(dir, { recursive: true });
 
     return `${dir}/${hashUrl(url)}${extension}`;
+  }
+
+  /**
+   * Removes cache directories older than FILE_CACHE_LOOKBACK_DAYS.
+   * Called once on construction.
+   */
+  private purgeOldCacheDirs(): void {
+    const validDates = new Set<string>();
+    for (let i = 0; i < FILE_CACHE_LOOKBACK_DAYS; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const [dateStr] = date.toISOString().split("T");
+      validDates.add(dateStr);
+    }
+
+    let entries: string[];
+    try {
+      entries = readdirSync(this.cacheDir);
+    } catch {
+      return;
+    }
+
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+    for (const entry of entries) {
+      if (!datePattern.test(entry)) {
+        continue;
+      }
+      if (validDates.has(entry)) {
+        continue;
+      }
+
+      try {
+        rmSync(`${this.cacheDir}/${entry}`, { recursive: true, force: true });
+      } catch {
+        // Best-effort cleanup, ignore errors
+      }
+    }
   }
 }

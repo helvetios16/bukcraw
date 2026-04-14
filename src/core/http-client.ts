@@ -37,6 +37,25 @@ interface RequestOptions {
 }
 
 /**
+ * Conditional headers sent to check if a resource has been modified.
+ */
+export interface ConditionalHeaders {
+  etag?: string;
+  lastModified?: string;
+}
+
+/**
+ * Response from a conditional GET, including cache-validation metadata.
+ */
+export interface ConditionalResponse {
+  content: string | null;
+  status: number;
+  notModified: boolean;
+  etag?: string;
+  lastModified?: string;
+}
+
+/**
  * A lightweight HTTP client using Bun's fetch API.
  * Optimized for scraping Goodreads by mimicking browser headers.
  */
@@ -116,6 +135,52 @@ export class HttpClient {
     }
 
     throw new Error(`Failed to fetch ${url} after ${MAX_RETRIES} retries: ${lastError?.message}`);
+  }
+
+  /**
+   * Performs a conditional GET using ETag/Last-Modified headers.
+   * Returns 304 (notModified=true) when the resource hasn't changed,
+   * avoiding a full download of unchanged pages.
+   */
+  public async conditionalGet(
+    url: string,
+    cached?: ConditionalHeaders,
+  ): Promise<ConditionalResponse> {
+    const conditionalHeaders: Record<string, string> = {};
+    if (cached?.etag) {
+      conditionalHeaders["If-None-Match"] = cached.etag;
+    }
+    if (cached?.lastModified) {
+      conditionalHeaders["If-Modified-Since"] = cached.lastModified;
+    }
+
+    const headers = { ...this.defaultHeaders, ...conditionalHeaders };
+
+    try {
+      const response = await fetch(url, { method: "GET", headers });
+
+      const etag = response.headers.get("ETag") || undefined;
+      const lastModified = response.headers.get("Last-Modified") || undefined;
+
+      if (response.status === 304) {
+        return { content: null, status: 304, notModified: true, etag, lastModified };
+      }
+
+      if (!response.ok) {
+        return {
+          content: null,
+          status: response.status,
+          notModified: false,
+          etag,
+          lastModified,
+        };
+      }
+
+      const content = await response.text();
+      return { content, status: response.status, notModified: false, etag, lastModified };
+    } catch {
+      return { content: null, status: 0, notModified: false };
+    }
   }
 
   /**

@@ -28,7 +28,7 @@ import {
 } from "../types";
 import { pMap } from "../utils/concurrency";
 import { Logger } from "../utils/logger";
-import { getErrorMessage, isValidBookId } from "../utils/util";
+import { getErrorMessage, hashUrl, isValidBookId } from "../utils/util";
 
 const log = new Logger("GoodreadsService");
 
@@ -63,6 +63,7 @@ export class GoodreadsService {
     httpSuccess: 0,
     browserFallback: 0,
     cacheHits: 0,
+    notModified: 0,
   };
 
   constructor(pageOrClient: Page | BrowserClient) {
@@ -146,10 +147,20 @@ export class GoodreadsService {
     // 2. Hybrid fetch (Level 3)
     const { content, method } = await this.fetchContentWithFallback(url);
 
+    // 2b. 304 Not Modified — reuse existing DB/file data
+    if (method === "not-modified") {
+      if (dbBook) {
+        this.db.refreshBookTimestamp(id);
+        log.info(`Book ${id} not modified, reusing cached data.`);
+        return dbBook;
+      }
+      // Try to re-parse from the cached content that was returned
+    }
+
     let bookData: Book | null = null;
 
     // 3. Extract data (Next.js Data)
-    if (method === "http") {
+    if (method === "http" || method === "not-modified") {
       bookData = await this.processNextDataFromHtml(content, url);
     } else if (this.page) {
       const nextDataElement = await this.page.$("#__NEXT_DATA__");
@@ -300,11 +311,15 @@ export class GoodreadsService {
   // --- Helper Methods ---
 
   /**
-   * Hybrid content fetcher: tries HTTP first, falls back to Puppeteer if blocked.
+   * Hybrid content fetcher: tries conditional GET first (ETag/Last-Modified),
+   * then full HTTP, then falls back to Puppeteer if blocked.
+   *
+   * When the server returns 304 Not Modified, the cached content is reused
+   * and timestamps are refreshed — saving bandwidth and processing time.
    */
   private async fetchContentWithFallback(
     url: string,
-  ): Promise<{ content: string; method: "http" | "browser" }> {
+  ): Promise<{ content: string; method: "http" | "browser" | "not-modified" }> {
     if (!this.http) {
       await this.initSession();
     }
@@ -312,10 +327,47 @@ export class GoodreadsService {
     await this.rateLimiter.throttle();
 
     try {
+      // 1. Try conditional GET if we have stored metadata
+      const urlHash = hashUrl(url);
+      const metadata = this.db.getHttpMetadata(urlHash);
+
+      if (metadata && (metadata.etag || metadata.lastModified)) {
+        const condResponse = await this.http?.conditionalGet(url, {
+          etag: metadata.etag,
+          lastModified: metadata.lastModified,
+        });
+
+        if (condResponse?.notModified) {
+          // Resource hasn't changed — try to serve from cache
+          const cached =
+            (await this.cache.get(url, ".json")) || (await this.cache.get(url, ".html"));
+
+          if (cached) {
+            this.stats.notModified++;
+            this.db.refreshHttpMetadata(urlHash);
+            log.debug(`304 Not Modified: ${url}`);
+            return { content: cached, method: "not-modified" };
+          }
+          // 304 but no local cache — fall through to full fetch
+          log.debug("304 but no local cache, doing full fetch");
+        }
+
+        // Conditional request returned new content (200)
+        if (condResponse?.content && !this.http?.isBlocked(condResponse.content)) {
+          this.stats.httpSuccess++;
+          this.db.saveHttpMetadata(urlHash, url, condResponse.etag, condResponse.lastModified);
+          return { content: condResponse.content, method: "http" };
+        }
+      }
+
+      // 2. Full HTTP request (no metadata or conditional failed)
       const content = await this.http?.get(url);
 
       if (content && !this.http?.isBlocked(content)) {
         this.stats.httpSuccess++;
+        // Extract and save metadata from response headers for future conditional requests
+        // (headers are captured in conditionalGet; for plain get we do a lightweight HEAD)
+        this.saveMetadataFromUrl(url);
         return { content, method: "http" };
       }
     } catch (error: unknown) {
@@ -334,20 +386,44 @@ export class GoodreadsService {
   }
 
   /**
+   * Performs a lightweight HEAD request to capture ETag/Last-Modified
+   * after a successful full GET (which doesn't expose response headers).
+   */
+  private async saveMetadataFromUrl(url: string): Promise<void> {
+    try {
+      const response = await fetch(url, {
+        method: "HEAD",
+        headers: { "User-Agent": this.http ? "bukcraw" : "" },
+      });
+      const etag = response.headers.get("ETag") || undefined;
+      const lastModified = response.headers.get("Last-Modified") || undefined;
+      if (etag || lastModified) {
+        this.db.saveHttpMetadata(hashUrl(url), url, etag, lastModified);
+      }
+    } catch {
+      // Best-effort, don't fail the main flow
+    }
+  }
+
+  /**
    * Prints a summary of the scraping efficiency.
    */
   public printTelemetry(): void {
-    const totalRequests = this.stats.httpSuccess + this.stats.browserFallback;
+    const totalRequests =
+      this.stats.httpSuccess + this.stats.browserFallback + this.stats.notModified;
     const efficiency =
       totalRequests > 0 ? ((this.stats.httpSuccess / totalRequests) * 100).toFixed(1) : "0";
+    const savedRequests = this.stats.notModified + this.stats.cacheHits;
 
     log.info("TELEMETRY REPORT");
     log.info("=".repeat(40));
     log.info(`HTTP requests:        ${this.stats.httpSuccess}`);
+    log.info(`304 Not Modified:     ${this.stats.notModified}`);
     log.info(`Browser fallbacks:    ${this.stats.browserFallback}`);
     log.info(`Cache hits:           ${this.stats.cacheHits}`);
     log.info("-".repeat(40));
     log.info(`HTTP success rate:    ${efficiency}%`);
+    log.info(`Saved requests:       ${savedRequests} (cache + 304)`);
   }
 
   private async ensureBrowserPage(): Promise<void> {
