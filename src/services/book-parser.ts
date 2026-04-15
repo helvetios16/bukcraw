@@ -81,7 +81,9 @@ export function parseBookData(jsonData: unknown): Book | null {
   const workData = resolve(workRef);
 
   const description = data.description
-    ? data.description.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>?/gm, "") // Strip other HTML tags if desired, or keep simple
+    ? data.description
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<[^>]*>?/gm, "") // Strip other HTML tags if desired, or keep simple
     : undefined;
 
   return {
