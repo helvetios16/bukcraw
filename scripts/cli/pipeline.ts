@@ -118,13 +118,13 @@ async function scrapeBlog(
   formats: string[],
   sort: string,
 ): Promise<{ books: Book[]; errors: { id: string; title: string; error: string }[] }> {
-  console.log(`\n${c.heading(`Blog: ${blogId}`)}`);
-
   const blogData = await service.scrapeBlog(blogId);
   if (!blogData) {
     console.error(c.error(`  Failed to scrape blog ${blogId}`));
     return { books: [], errors: [] };
   }
+
+  console.log(`\n${c.heading(`Blog: ${blogData.title || blogId}`)}`);
 
   const books: Book[] = blogData.mentionedBooks || [];
   console.log(c.success(`  ${books.length} books found`));
