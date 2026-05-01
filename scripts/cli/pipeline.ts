@@ -173,7 +173,12 @@ async function main(): Promise<void> {
     }
 
     if (allErrors.length > 0) {
-      console.log(`\n${c.warn(`${allErrors.length} error(s) found during process.`)}`);
+      console.log(`\n${c.warn(`${allErrors.length} error(s) found during process:`)}`);
+      for (const err of allErrors) {
+        console.log(
+          `  - ${c.error(err.blogId || "General")}: ${c.info(err.title)} (${c.gray(err.id)}) -> ${c.gray(err.error)}`,
+        );
+      }
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
