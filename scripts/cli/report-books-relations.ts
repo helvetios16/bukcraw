@@ -20,6 +20,7 @@ interface ReportArgs {
   language: string;
   output: string;
   blogs: string[];
+  sort: string;
 }
 
 /**
@@ -42,6 +43,7 @@ function parseArgs(): ReportArgs {
     language: "", // Default to all languages if empty
     output: "report-database-books.json",
     blogs: [],
+    sort: "date",
   };
 
   for (const arg of args) {
@@ -52,6 +54,8 @@ function parseArgs(): ReportArgs {
     } else if (arg.startsWith("--blogs=")) {
       const blogsValue = arg.split("=")[1];
       params.blogs = blogsValue ? blogsValue.split(",").filter(Boolean) : [];
+    } else if (arg.startsWith("--sort=")) {
+      params.sort = arg.split("=")[1] ?? "date";
     }
   }
 
@@ -60,7 +64,7 @@ function parseArgs(): ReportArgs {
 
 async function main(): Promise<void> {
   const args = parseArgs();
-  let { language, output, blogs: targetBlogs } = args;
+  let { language, output, blogs: targetBlogs, sort } = args;
 
   const dbService = new DatabaseService();
 
@@ -73,13 +77,24 @@ async function main(): Promise<void> {
         return;
       }
 
-      allBlogs.sort((a, b) => a.title.localeCompare(b.title));
+      // Ordenar blogs según el parámetro
+      if (sort === "date") {
+        // @ts-expect-error - createdAt está en el objeto retornado por getAllBlogs
+        allBlogs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      } else if (sort === "name") {
+        allBlogs.sort((a, b) => a.title.localeCompare(b.title));
+      } else if (sort === "id") {
+        allBlogs.sort((a, b) => a.id.localeCompare(b.id));
+      }
 
       const handleVimNavigation = (_ch: string, key: { name?: string }) => {
         if (key?.name === "j") {
           process.stdin.emit("keypress", null, { name: "down" });
         } else if (key?.name === "k") {
           process.stdin.emit("keypress", null, { name: "up" });
+        } else if (key?.name === "q") {
+          console.log(c.warn("\nAborted by user (q)."));
+          process.exit(0);
         }
       };
       process.stdin.on("keypress", handleVimNavigation);
@@ -89,11 +104,17 @@ async function main(): Promise<void> {
           type: "checkbox",
           name: "selectedBlogs",
           message: "Select blogs to include in the report:",
-          choices: allBlogs.map((blog) => ({
-            name: `${blog.title} (${blog.id})`,
-            value: blog.id,
-            checked: true,
-          })),
+          choices: allBlogs.map((blog) => {
+            // @ts-expect-error
+            const dateStr = blog.createdAt
+              ? new Date(blog.createdAt).toLocaleDateString()
+              : "unknown";
+            return {
+              name: `${c.info(dateStr)} | ${blog.title} (${c.gray(blog.id)})`,
+              value: blog.id,
+              checked: true,
+            };
+          }),
           pageSize: 20,
           loop: false,
         },

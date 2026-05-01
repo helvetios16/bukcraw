@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { BrowserClient } from "../../src/core/browser-client";
 import { DatabaseService } from "../../src/core/database";
 import { GoodreadsService } from "../../src/services/goodreads-service";

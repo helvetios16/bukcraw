@@ -2,6 +2,9 @@
   "name": "bukcraw",
   "module": "index.ts",
   "type": "module",
+  "bin": {
+    "bukcraw": "./src/cli.ts"
+  },
   "private": true,
   "scripts": {
     "start": "bun run index.ts",
@@ -23,6 +26,7 @@
     "typescript": "^6.0.2"
   },
   "dependencies": {
+    "cac": "^7.0.0",
     "linkedom": "^0.18.12",
     "puppeteer": "^24.40.0"
   }
