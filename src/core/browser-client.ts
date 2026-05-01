@@ -14,16 +14,14 @@ export class BrowserClient {
   private browser: Browser | null = null;
 
   /**
-   * Initializes the browser instance and sets up anti-detection measures.
-   * @returns The main browser page.
+   * Initializes the browser instance (if not already launched) and returns a new page.
+   * @returns A new browser page with anti-detection and optimizations.
    */
   public async launch(): Promise<Page> {
-    if (this.browser) {
-      throw new Error("Browser is already launched.");
+    if (!this.browser) {
+      log.info("Starting browser...");
+      this.browser = await puppeteer.launch(PUPPETEER_LAUNCH_OPTIONS);
     }
-
-    log.info("Starting browser...");
-    this.browser = await puppeteer.launch(PUPPETEER_LAUNCH_OPTIONS);
 
     const page = await this.browser.newPage();
     await this.applyAntiDetection(page);
