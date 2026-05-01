@@ -179,14 +179,14 @@ export class GoodreadsService {
     return bookData;
   }
 
-  public async scrapeEditionsFilters(legacyId: string | number): Promise<void> {
+  public async scrapeEditionsFilters(legacyId: string | number): Promise<EditionsFilters | null> {
     const url = `${GOODREADS_URL}${WORK_URL}${legacyId}`;
     log.info(`Scraping edition filters (Work ID: ${legacyId})...`);
 
     try {
       const cachedParsed = await this.cache.get(url, "-parsed.json");
       if (cachedParsed) {
-        return;
+        return JSON.parse(cachedParsed);
       }
     } catch (error: unknown) {
       log.debug("Edition filters cache miss:", getErrorMessage(error));
@@ -206,8 +206,10 @@ export class GoodreadsService {
         extension: "-parsed.json",
       });
       log.info(`Edition filters saved (${editionsData.language.length} languages found).`);
+      return editionsData;
     } else {
       log.warn("Failed to parse edition filters.");
+      return null;
     }
   }
 

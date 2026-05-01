@@ -33,28 +33,63 @@ function runScript(scriptPath: string, args: string[]) {
 cli
   .command("run [...blogs]", "Ejecuta el pipeline sobre uno o varios blogs")
   .option("--language <lang>", "Código de idioma", { default: "spa" })
-  .option("--format <fmt>", "Formato (ebook, hardcover, Kindle Edition, etc.)")
+  .option("--format <fmt>", "Formato (ebook, hardcover, Kindle Edition, etc.)", {
+    default: "ebook,Kindle Edition",
+  })
   .option("--sort <order>", "Orden de las ediciones (num_ratings, avg_rating, publish_date)")
   .option("--report", "Generar reporte final (desactivado por defecto)")
   .option("--output <path>", "Ruta del archivo de salida")
+  .option("--force", "Forzar scraping completo ignorando validaciones de formato")
   .action((blogs, options) => {
     const args: string[] = [];
-    if (blogs.length > 0) args.push(...blogs);
-    if (options.language) args.push(`--language=${options.language}`);
-    if (options.format) args.push(`--format=${options.format}`);
-    if (options.sort) args.push(`--sort=${options.sort}`);
-
-    // Si NO se pasó el flag --report, añadimos --no-report al script interno
-    if (!options.report) {
-      args.push("--no-report");
+    if (blogs.length > 0) {
+      args.push(...blogs);
     }
-
-    if (options.output) args.push(`--output=${options.output}`);
+    if (options.language) {
+      args.push(`--language=${options.language}`);
+    }
+    if (options.format) {
+      args.push(`--format=${options.format}`);
+    }
+    if (options.sort) {
+      args.push(`--sort=${options.sort}`);
+    }
+    if (options.force) {
+      args.push("--force");
+    }
+    if (options.report) {
+      args.push("--report");
+    }
+    if (options.output) {
+      args.push(`--output=${options.output}`);
+    }
 
     runScript("scripts/cli/pipeline.ts", args);
   });
 
-// 2. Report (Database relations)
+// 2. Check (Fast verification)
+cli
+  .command("check [...blogs]", "Verifica disponibilidad de formatos sin scrapear ediciones")
+  .option("--language <lang>", "Código de idioma", { default: "spa" })
+  .option("--format <fmt>", "Formato (ebook, Kindle Edition, etc.)", {
+    default: "ebook,Kindle Edition",
+  })
+  .action((blogs, options) => {
+    const args: string[] = ["--check-only"];
+    if (blogs.length > 0) {
+      args.push(...blogs);
+    }
+    if (options.language) {
+      args.push(`--language=${options.language}`);
+    }
+    if (options.format) {
+      args.push(`--format=${options.format}`);
+    }
+
+    runScript("scripts/cli/pipeline.ts", args);
+  });
+
+// 3. Report (Database relations)
 cli
   .command("report", "Genera el reporte de relaciones desde la base de datos")
   .option("--language <lang>", "Filtrar ediciones por idioma")
@@ -63,28 +98,40 @@ cli
   .option("--output <path>", "Nombre del archivo de salida")
   .action((options) => {
     const args: string[] = [];
-    if (options.language) args.push(`--language=${options.language}`);
-    if (options.blogs) args.push(`--blogs=${options.blogs}`);
-    if (options.sort) args.push(`--sort=${options.sort}`);
-    if (options.output) args.push(`--output=${options.output}`);
+    if (options.language) {
+      args.push(`--language=${options.language}`);
+    }
+    if (options.blogs) {
+      args.push(`--blogs=${options.blogs}`);
+    }
+    if (options.sort) {
+      args.push(`--sort=${options.sort}`);
+    }
+    if (options.output) {
+      args.push(`--output=${options.output}`);
+    }
 
     runScript("scripts/cli/report-books-relations.ts", args);
   });
 
-// 3. Cache
+// 4. Cache
 cli.command("cache:clear", "Limpia la caché de descargas").action(() => {
   runScript("scripts/cache/clear.ts", []);
 });
 
-// 4. Workflow (Legacy / Single blog)
+// 5. Workflow (Legacy / Single blog)
 cli
   .command("workflow <blogId>", "Ejecuta el flujo para un solo blog (legacy)")
   .option("--language <lang>", "Código de idioma", { default: "spa" })
   .option("--format <fmt>", "Formato")
   .action((blogId, options) => {
     const args: string[] = [blogId];
-    if (options.language) args.push(`--language=${options.language}`);
-    if (options.format) args.push(`--format=${options.format}`);
+    if (options.language) {
+      args.push(`--language=${options.language}`);
+    }
+    if (options.format) {
+      args.push(`--format=${options.format}`);
+    }
 
     runScript("scripts/cli/workflow-blog-to-editions.ts", args);
   });
@@ -94,7 +141,8 @@ cli.version("1.0.0");
 
 try {
   cli.parse();
-} catch (e: any) {
-  console.error(`\x1b[31mError:\x1b[0m ${e.message}`);
+} catch (e: unknown) {
+  const message = e instanceof Error ? e.message : String(e);
+  console.error(`\x1b[31mError:\x1b[0m ${message}`);
   process.exit(1);
 }

@@ -28,11 +28,25 @@ interface PipelineArgs {
   formats: string[];
   sort: string;
   output: string;
-  skipReport: boolean;
+  enableReport: boolean;
+  checkOnly: boolean;
+  force: boolean;
 }
 
-const VALID_FORMATS = ["hardcover", "paperback", "ebook", "Kindle Edition", "audiobook"] as const;
-type ValidFormat = (typeof VALID_FORMATS)[number];
+const _VALID_FORMATS = ["hardcover", "paperback", "ebook", "Kindle Edition", "audiobook"] as const;
+
+interface PipelineError {
+  id: string;
+  title: string;
+  error: string;
+}
+
+interface BlogRelationRow {
+  book_id: string;
+  blog_id: string;
+  blog_title: string;
+  blog_url: string;
+}
 
 // ── Args parsing ──
 
@@ -44,15 +58,21 @@ function parseArgs(): PipelineArgs | null {
     formats: ["ebook", "Kindle Edition"],
     sort: "num_ratings",
     output: "",
-    skipReport: false,
+    enableReport: false,
+    checkOnly: false,
+    force: false,
   };
 
   for (const arg of args) {
     if (arg === "--help" || arg === "-h") {
       printHelp();
       return null;
-    } else if (arg === "--no-report") {
-      params.skipReport = true;
+    } else if (arg === "--report") {
+      params.enableReport = true;
+    } else if (arg === "--check-only") {
+      params.checkOnly = true;
+    } else if (arg === "--force") {
+      params.force = true;
     } else if (arg.startsWith("--blogs=")) {
       const value = arg.split("=").slice(1).join("=");
       params.blogIds = value
@@ -72,7 +92,6 @@ function parseArgs(): PipelineArgs | null {
     } else if (arg.startsWith("--output=")) {
       params.output = arg.split("=").slice(1).join("=");
     } else if (!arg.startsWith("--")) {
-      // Positional args are blog IDs
       params.blogIds.push(arg);
     }
   }
@@ -88,25 +107,19 @@ Scrapes multiple blogs, extracts books and editions, and generates
 a combined report showing which books appear across multiple blogs.
 
 ${c.heading("Usage:")}
-  bun run scripts/cli/pipeline.ts [options] [blogId1 blogId2 ...]
+  bukcraw run [options] [blogId1 blogId2 ...]
+  bukcraw check [options] [blogId1 blogId2 ...]
 
 ${c.heading("Options:")}
   --blogs=<id1,id2,...>  Blog IDs, comma-separated
   --language=<code>      Language code (default: ${c.info("spa")})
-                         Examples: spa, eng, por, ita, fra, deu
   --format=<fmt>         Book format(s), comma-separated
                          (default: ${c.info("ebook,Kindle Edition")})
-                         Valid: ${VALID_FORMATS.join(", ")}
   --sort=<order>         Edition sort order (default: ${c.info("num_ratings")})
-                         Options: num_ratings, avg_rating, publish_date
-  --no-report            Skip report generation (scrape only)
+  --report               Generate final report
+  --force                Force full scrape (ignore format checks)
   --output=<path>        Output filename (default: auto-generated)
   --help, -h             Show this help
-
-${c.heading("Examples:")}
-  bun run scripts/cli/pipeline.ts blog-id-1 blog-id-2
-  bun run scripts/cli/pipeline.ts --blogs=blog-1,blog-2,blog-3
-  bun run scripts/cli/pipeline.ts --blogs=blog-1,blog-2 --language=eng --format=ebook
 `);
 }
 
@@ -118,6 +131,8 @@ async function scrapeBlog(
   language: string,
   formats: string[],
   sort: string,
+  checkOnly: boolean,
+  force: boolean,
 ): Promise<{ books: Book[]; errors: { id: string; title: string; error: string }[] }> {
   const blogData = await service.scrapeBlog(blogId);
   if (!blogData) {
@@ -144,19 +159,47 @@ async function scrapeBlog(
       }
 
       if (bookDetails.legacyId) {
-        await service.scrapeEditionsFilters(bookDetails.legacyId);
+        const filters = await service.scrapeEditionsFilters(bookDetails.legacyId);
 
-        const formatsToProcess = formats.length > 0 ? formats : [undefined];
-        for (const format of formatsToProcess) {
-          const filterOptions: BookFilterOptions = { language, sort, format };
-          await service.scrapeFilteredEditions(bookDetails.legacyId, filterOptions);
+        if (filters && !force) {
+          const hasLanguage = filters.language.some((l) => l.value === language);
+          const availableFormats =
+            formats.length > 0
+              ? formats.filter((f) => filters.format.some((af) => af.value === f))
+              : [];
+
+          const canProcess = hasLanguage && (formats.length === 0 || availableFormats.length > 0);
+
+          if (!canProcess) {
+            const reason = !hasLanguage
+              ? `Language '${language}' not found`
+              : `Format(s) '${formats.join(",")}' not found`;
+            console.log(`  ${c.warn("Skipped:")} ${c.gray(reason)}`);
+            continue;
+          }
+
+          if (checkOnly) {
+            console.log(
+              `  ${c.success("Available:")} ${c.gray(`${language} | ${availableFormats.join(",")}`)}`,
+            );
+            processedBooks.push(bookDetails);
+            continue;
+          }
+        }
+
+        if (!checkOnly) {
+          const formatsToProcess = formats.length > 0 ? formats : [undefined];
+          for (const format of formatsToProcess) {
+            const filterOptions: BookFilterOptions = { language, sort, format };
+            await service.scrapeFilteredEditions(bookDetails.legacyId, filterOptions);
+          }
         }
       }
 
       processedBooks.push(bookDetails);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      console.warn(`  ${c.warn("Skipped:")} ${c.gray(errorMessage)}`);
+      console.warn(`  ${c.warn("Error:")} ${c.gray(errorMessage)}`);
       errors.push({ id: bookRef.id, title: bookRef.title || "Unknown", error: errorMessage });
     }
   }
@@ -164,7 +207,7 @@ async function scrapeBlog(
   return { books: processedBooks, errors };
 }
 
-// ── Report generation phase (from DB, same logic as report-books-relations) ──
+// ── Report generation phase ──
 
 function generateReport(
   dbService: DatabaseService,
@@ -174,7 +217,6 @@ function generateReport(
   const db = dbService.getDb();
   const booksByCanonicalKey = new Map<string, BookReport>();
 
-  // Fetch blog-book relations
   let querySql = `
     SELECT bb.book_id, b.id as blog_id, b.title as blog_title, b.url as blog_url
     FROM blog_books bb
@@ -188,12 +230,7 @@ function generateReport(
     queryParams.push(...targetBlogIds);
   }
 
-  const allBlogRelations = db.prepare(querySql).all(...queryParams) as {
-    book_id: string;
-    blog_id: string;
-    blog_title: string;
-    blog_url: string;
-  }[];
+  const allBlogRelations = db.prepare(querySql).all(...queryParams) as BlogRelationRow[];
 
   const blogsByBookId = new Map<string, { id: string; title: string; url: string }[]>();
   for (const rel of allBlogRelations) {
@@ -208,7 +245,6 @@ function generateReport(
     });
   }
 
-  // Process books with deduplication
   const allBooks = dbService.getAllBooks();
   const filteredBooks =
     targetBlogIds.length > 0
@@ -219,19 +255,7 @@ function generateReport(
       : allBooks;
 
   for (const book of filteredBooks) {
-    const canonicalTitle = book.title
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]/g, "");
-
-    const canonicalAuthor = (book.author || "Unknown")
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]/g, "");
-
-    const canonicalKey = `${canonicalTitle}-${canonicalAuthor}`;
+    const canonicalKey = `${book.title}-${book.author}`.toLowerCase().replace(/[^a-z0-9]/g, "");
     const normalizedBookId = book.id.match(/^\d+/)?.[0] || book.id;
     const relatedBlogs = blogsByBookId.get(normalizedBookId) || [];
 
@@ -252,9 +276,6 @@ function generateReport(
           existing.editionsFound.push(edition);
         }
       }
-      if (!existing.description && book.description) {
-        existing.description = book.description;
-      }
     } else {
       booksByCanonicalKey.set(canonicalKey, {
         ...book,
@@ -265,8 +286,6 @@ function generateReport(
   }
 
   const finalBooks = Array.from(booksByCanonicalKey.values());
-
-  // Collect unique blogs
   const blogsInReport = new Map<string, { id: string; title: string; url: string }>();
   for (const book of finalBooks) {
     for (const blog of book.blogs) {
@@ -292,113 +311,77 @@ async function main(): Promise<void> {
     return;
   }
 
-  const { blogIds, language, formats, sort, output, skipReport } = args;
+  const { blogIds, language, formats, sort, output, enableReport, checkOnly, force } = args;
 
   if (blogIds.length === 0) {
     console.error(c.error("Error: At least one blog ID is required."));
-    console.log(c.gray("Run with --help for usage information."));
-    process.exit(1);
-  }
-
-  const invalidFormats = formats.filter((f) => !VALID_FORMATS.includes(f as ValidFormat));
-  if (invalidFormats.length > 0) {
-    console.error(
-      c.error(
-        `Error: Invalid format(s) '${invalidFormats.join(", ")}'. Valid: ${VALID_FORMATS.join(", ")}`,
-      ),
-    );
     process.exit(1);
   }
 
   console.log(
-    `${c.heading("Pipeline")} ${c.gray(`| ${blogIds.length} blog(s) | lang=${language} format=${formats.join(",") || "any"} sort=${sort}`)}`,
-  );
-  console.log(
-    `  Report:   ${skipReport ? c.warn("disabled (--no-report)") : c.success("enabled")}`,
+    `${c.heading(checkOnly ? "Check Mode" : "Pipeline Mode")} ${c.gray(`| ${blogIds.length} blog(s) | lang=${language} formats=${formats.join(",")}`)}`,
   );
 
   const browserClient = new BrowserClient();
   const dbService = new DatabaseService();
-  const allErrors: { blogId: string; id: string; title: string; error: string }[] = [];
+  const allErrors: PipelineError[] = [];
 
   try {
     const service = new GoodreadsService(browserClient);
 
-    // ── Phase 1: Scrape all blogs ──
-    console.log(`\n${c.heading("=== Phase 1: Scraping blogs ===")}`);
+    if (!checkOnly) {
+      console.log(`\n${c.heading("=== Phase 1: Scraping blogs ===")}`);
+    }
 
     for (const [i, blogId] of blogIds.entries()) {
       console.log(c.gray(`\n[${i + 1}/${blogIds.length}]`));
-      const { errors } = await scrapeBlog(service, blogId, language, formats, sort);
+      const { errors } = await scrapeBlog(
+        service,
+        blogId,
+        language,
+        formats,
+        sort,
+        checkOnly,
+        force,
+      );
       for (const err of errors) {
         allErrors.push({ blogId, ...err });
       }
     }
 
+    if (checkOnly) {
+      console.log(`\n${c.success("Check completed.")}`);
+      return;
+    }
+
     service.printTelemetry();
 
-    // ── Phase 2: Generate combined report ──
-    if (skipReport) {
-      console.log(`\n${c.gray("Skipping report generation (--no-report)")}`);
+    if (!enableReport) {
+      console.log(`\n${c.gray("Final report generation is disabled (use --report to enable)")}`);
     } else {
       console.log(`\n${c.heading("=== Phase 2: Generating combined report ===")}`);
-
       const report = generateReport(dbService, blogIds, language);
 
-      // Stats
-      const withEditions = report.books.filter((b) => b.editionsFound.length > 0).length;
-      const multiBlog = report.books.filter((b) => b.blogs.length > 1).length;
-
-      // Save report
       const { mkdirSync } = await import("node:fs");
       const path = await import("node:path");
-
       const reportsDir = path.resolve(process.cwd(), ".reports");
       mkdirSync(reportsDir, { recursive: true });
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const outputName = output || `report-pipeline-${timestamp}.json`;
-      const finalPath = path.resolve(reportsDir, outputName);
-
+      const finalPath = path.resolve(reportsDir, output || `report-pipeline-${timestamp}.json`);
       await Bun.write(finalPath, JSON.stringify(report, null, 2));
 
-      // Summary
       console.log(`\n${c.heading("=== Results ===")}`);
-      console.log(`  Blogs scraped:         ${c.info(String(report.blogs.length))}`);
       console.log(`  Unique books:          ${c.info(String(report.count))}`);
-      console.log(`  With editions:         ${c.success(String(withEditions))}`);
-      console.log(`  In multiple blogs:     ${c.success(String(multiBlog))}`);
       console.log(`  Report:                ${c.gray(finalPath)}`);
-
-      if (multiBlog > 0) {
-        console.log(`\n${c.heading("Books in multiple blogs (best picks):")}`);
-        const multiBlogBooks = report.books
-          .filter((b) => b.blogs.length > 1)
-          .sort((a, b) => b.blogs.length - a.blogs.length);
-
-        for (const book of multiBlogBooks) {
-          const edCount = book.editionsFound.length;
-          const blogNames = book.blogs.map((b) => b.title).join(", ");
-          const edInfo = edCount > 0 ? c.success(`${edCount} ed.`) : c.warn("no editions");
-          console.log(`  ${c.info(`[${book.blogs.length} blogs]`)} ${book.title} — ${edInfo}`);
-          console.log(`    ${c.gray(blogNames)}`);
-        }
-      }
     }
 
     if (allErrors.length > 0) {
-      console.log(`\n${c.warn(`${allErrors.length} error(s):`)}`);
-      const grouped = Map.groupBy(allErrors, (err) => err.error);
-      for (const [reason, items] of grouped) {
-        console.log(`\n  ${c.gray(reason)} ${c.warn(`(${items.length})`)}`);
-        for (const err of items) {
-          console.log(`    ${c.gray("-")} ${err.title}`);
-        }
-      }
+      console.log(`\n${c.warn(`${allErrors.length} error(s) found during process.`)}`);
     }
   } catch (error: unknown) {
-    const fatalMessage = error instanceof Error ? error.message : String(error);
-    console.error(`\n${c.error("Fatal error:")} ${fatalMessage}`);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`\n${c.error("Fatal error:")} ${message}`);
   } finally {
     dbService.close();
     await browserClient.close();
