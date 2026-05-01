@@ -31,7 +31,11 @@ export class BlogService extends BaseScraperService {
       log.debug("Blog cache miss:", getErrorMessage(error));
     }
 
-    const { content } = await this.fetchContentWithFallback(url);
+    const validate = (html: string) => {
+      return html.includes('property="og:title"') || html.includes('property="og:url"');
+    };
+
+    const { content } = await this.fetchContentWithFallback(url, validate);
     await this.cache.save({ url, content, force: false, extension: ".html" });
 
     const blogData = parseBlogHtml(content, url);

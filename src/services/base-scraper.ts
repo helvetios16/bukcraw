@@ -78,6 +78,7 @@ export abstract class BaseScraperService {
 
   protected async fetchContentWithFallback(
     url: string,
+    validate?: (content: string) => boolean,
   ): Promise<{ content: string; method: "http" | "browser" | "not-modified" }> {
     if (!this.http) {
       await this.initSession();
@@ -97,14 +98,18 @@ export abstract class BaseScraperService {
         if (condResponse?.notModified) {
           const cached =
             (await this.cache.get(url, ".json")) || (await this.cache.get(url, ".html"));
-          if (cached) {
+          if (cached && (!validate || validate(cached))) {
             this.stats.notModified++;
             this.db.refreshHttpMetadata(urlHash);
             return { content: cached, method: "not-modified" };
           }
         }
 
-        if (condResponse?.content && !this.http?.isBlocked(condResponse.content)) {
+        if (
+          condResponse?.content &&
+          !this.http?.isBlocked(condResponse.content) &&
+          (!validate || validate(condResponse.content))
+        ) {
           this.stats.httpSuccess++;
           this.db.saveHttpMetadata(urlHash, url, condResponse.etag, condResponse.lastModified);
           return { content: condResponse.content, method: "http" };
@@ -112,7 +117,7 @@ export abstract class BaseScraperService {
       }
 
       const content = await this.http?.get(url);
-      if (content && !this.http?.isBlocked(content)) {
+      if (content && !this.http?.isBlocked(content) && (!validate || validate(content))) {
         this.stats.httpSuccess++;
         this.saveMetadataFromUrl(url);
         return { content, method: "http" };

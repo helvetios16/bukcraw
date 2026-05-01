@@ -39,7 +39,11 @@ export class EditionService extends BaseScraperService {
       log.debug("Edition filters cache miss:", getErrorMessage(error));
     }
 
-    const { content } = await this.fetchContentWithFallback(url);
+    const validate = (html: string) => {
+      return html.includes('name="filter_by_language"') || html.includes('name="sort"');
+    };
+
+    const { content } = await this.fetchContentWithFallback(url, validate);
     await this.cache.save({ url, content, force: false, extension: ".html" });
 
     const editionsData = parseEditionsHtml(content);
@@ -187,10 +191,14 @@ export class EditionService extends BaseScraperService {
   }
 
   private async getPageContent(url: string): Promise<{ content: string; fromCache: boolean }> {
+    const validate = (html: string) => {
+      return html.includes("elementList") || html.includes('class="bookTitle"');
+    };
+
     return this.cache.getOrFetch(
       url,
       async () => {
-        const { content } = await this.fetchContentWithFallback(url);
+        const { content } = await this.fetchContentWithFallback(url, validate);
         return content;
       },
       ".html",

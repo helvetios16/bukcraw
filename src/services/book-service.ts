@@ -34,7 +34,20 @@ export class BookService extends BaseScraperService {
     }
 
     // 3. Fetch Content
-    const { content, method } = await this.fetchContentWithFallback(url);
+    const validate = (html: string) => {
+      const match = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+      return !!match && match[1].includes('"Book:');
+    };
+
+    const { content, method } = await this.fetchContentWithFallback(url, validate);
+
+    // Detect Soft 404 (Goodreads returns 200 but shows "Sorry, we couldn’t find the page")
+    if (
+      content.includes("Sorry, we couldn’t find the page") ||
+      content.includes("ErrorPage__title")
+    ) {
+      throw new Error(`BOOK_NOT_FOUND: The book with ID ${id} does not exist or has been removed.`);
+    }
 
     if (method === "not-modified" && dbBook) {
       this.db.refreshBookTimestamp(id);
