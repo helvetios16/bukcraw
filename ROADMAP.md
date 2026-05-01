@@ -3,7 +3,7 @@
 Este documento detalla las posibles evoluciones técnicas y funcionales para el proyecto **Bukcraw**.
 
 ## 1. Refactorización Arquitectónica
-*   [ ] **Separación de Concernimientos:** Mover la lógica de negocio de `pipeline.ts` a un `PipelineService` dedicado en `src/services/`.
+*   [x] **Separación de Concernimientos:** Mover la lógica de negocio de `pipeline.ts` a un `PipelineService` dedicado en `src/services/`.
 *   [ ] **Modularización de Servicios:** Dividir `GoodreadsService` en servicios especializados por dominio (`BookService`, `EditionService`, `BlogService`).
 *   [ ] **Validación Robusta:** Implementar **Zod** para validar las estructuras de datos extraídas de Goodreads (`__NEXT_DATA__`), asegurando integridad ante cambios en la plataforma.
 

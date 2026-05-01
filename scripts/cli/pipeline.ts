@@ -2,25 +2,12 @@
 import { BrowserClient } from "../../src/core/browser-client";
 import { DatabaseService } from "../../src/core/database";
 import { GoodreadsService } from "../../src/services/goodreads-service";
-import type { Book, BookFilterOptions, Edition } from "../../src/types";
+import { type PipelineError, PipelineService } from "../../src/services/pipeline-service";
 import { ansi } from "../../src/utils/logger";
-import { Progress } from "../../src/utils/progress";
 
 const c = ansi;
 
 // ── Types ──
-
-interface BookReport extends Book {
-  editionsFound: Edition[];
-  blogs: { id: string; title: string; url: string }[];
-}
-
-interface FinalReportOutput {
-  generatedAt: string;
-  count: number;
-  blogs: { id: string; title: string; url: string }[];
-  books: BookReport[];
-}
 
 interface PipelineArgs {
   blogIds: string[];
@@ -31,21 +18,6 @@ interface PipelineArgs {
   enableReport: boolean;
   checkOnly: boolean;
   force: boolean;
-}
-
-const _VALID_FORMATS = ["hardcover", "paperback", "ebook", "Kindle Edition", "audiobook"] as const;
-
-interface PipelineError {
-  id: string;
-  title: string;
-  error: string;
-}
-
-interface BlogRelationRow {
-  book_id: string;
-  blog_id: string;
-  blog_title: string;
-  blog_url: string;
 }
 
 // ── Args parsing ──
@@ -123,186 +95,6 @@ ${c.heading("Options:")}
 `);
 }
 
-// ── Blog scraping phase ──
-
-async function scrapeBlog(
-  service: GoodreadsService,
-  blogId: string,
-  language: string,
-  formats: string[],
-  sort: string,
-  checkOnly: boolean,
-  force: boolean,
-): Promise<{ books: Book[]; errors: { id: string; title: string; error: string }[] }> {
-  const blogData = await service.scrapeBlog(blogId);
-  if (!blogData) {
-    console.error(c.error(`  Failed to scrape blog ${blogId}`));
-    return { books: [], errors: [] };
-  }
-
-  console.log(`\n${c.heading(`Blog: ${blogData.title || blogId}`)}`);
-
-  const books: Book[] = blogData.mentionedBooks || [];
-  console.log(c.success(`  ${books.length} books found`));
-
-  const progress = new Progress(books.length);
-  const processedBooks: Book[] = [];
-  const errors: { id: string; title: string; error: string }[] = [];
-
-  for (const bookRef of books) {
-    progress.tick(bookRef.title || bookRef.id);
-
-    try {
-      const bookDetails = await service.scrapeBook(bookRef.id);
-      if (!bookDetails) {
-        throw new Error(`Failed to get details for book ${bookRef.id}`);
-      }
-
-      if (bookDetails.legacyId) {
-        const filters = await service.scrapeEditionsFilters(bookDetails.legacyId);
-
-        if (filters && !force) {
-          const hasLanguage = filters.language.some((l) => l.value === language);
-          const availableFormats =
-            formats.length > 0
-              ? formats.filter((f) => filters.format.some((af) => af.value === f))
-              : [];
-
-          const canProcess = hasLanguage && (formats.length === 0 || availableFormats.length > 0);
-
-          if (!canProcess) {
-            const reason = !hasLanguage
-              ? `Language '${language}' not found`
-              : `Format(s) '${formats.join(",")}' not found`;
-            console.log(`  ${c.warn("Skipped:")} ${c.gray(reason)}`);
-            continue;
-          }
-
-          if (checkOnly) {
-            console.log(
-              `  ${c.success("Available:")} ${c.gray(`${language} | ${availableFormats.join(",")}`)}`,
-            );
-            processedBooks.push(bookDetails);
-            continue;
-          }
-        }
-
-        if (!checkOnly) {
-          const formatsToProcess = formats.length > 0 ? formats : [undefined];
-          for (const format of formatsToProcess) {
-            const filterOptions: BookFilterOptions = { language, sort, format };
-            await service.scrapeFilteredEditions(bookDetails.legacyId, filterOptions);
-          }
-        }
-      }
-
-      processedBooks.push(bookDetails);
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      console.warn(`  ${c.warn("Error:")} ${c.gray(errorMessage)}`);
-      errors.push({ id: bookRef.id, title: bookRef.title || "Unknown", error: errorMessage });
-    }
-  }
-
-  return { books: processedBooks, errors };
-}
-
-// ── Report generation phase ──
-
-function generateReport(
-  dbService: DatabaseService,
-  targetBlogIds: string[],
-  language: string,
-): FinalReportOutput {
-  const db = dbService.getDb();
-  const booksByCanonicalKey = new Map<string, BookReport>();
-
-  let querySql = `
-    SELECT bb.book_id, b.id as blog_id, b.title as blog_title, b.url as blog_url
-    FROM blog_books bb
-    JOIN blogs b ON bb.blog_id = b.id
-  `;
-
-  const queryParams: string[] = [];
-  if (targetBlogIds.length > 0) {
-    const placeholders = targetBlogIds.map(() => "?").join(",");
-    querySql += ` WHERE b.id IN (${placeholders})`;
-    queryParams.push(...targetBlogIds);
-  }
-
-  const allBlogRelations = db.prepare(querySql).all(...queryParams) as BlogRelationRow[];
-
-  const blogsByBookId = new Map<string, { id: string; title: string; url: string }[]>();
-  for (const rel of allBlogRelations) {
-    const normalizedBookId = rel.book_id.match(/^\d+/)?.[0] || rel.book_id;
-    if (!blogsByBookId.has(normalizedBookId)) {
-      blogsByBookId.set(normalizedBookId, []);
-    }
-    blogsByBookId.get(normalizedBookId)?.push({
-      id: rel.blog_id,
-      title: rel.blog_title,
-      url: rel.blog_url,
-    });
-  }
-
-  const allBooks = dbService.getAllBooks();
-  const filteredBooks =
-    targetBlogIds.length > 0
-      ? allBooks.filter((b) => {
-          const normalizedId = b.id.match(/^\d+/)?.[0] || b.id;
-          return blogsByBookId.has(normalizedId);
-        })
-      : allBooks;
-
-  for (const book of filteredBooks) {
-    const canonicalKey = `${book.title}-${book.author}`.toLowerCase().replace(/[^a-z0-9]/g, "");
-    const normalizedBookId = book.id.match(/^\d+/)?.[0] || book.id;
-    const relatedBlogs = blogsByBookId.get(normalizedBookId) || [];
-
-    let editions: Edition[] = [];
-    if (book.legacyId) {
-      editions = dbService.getEditions(book.legacyId, language || undefined);
-    }
-
-    const existing = booksByCanonicalKey.get(canonicalKey);
-    if (existing) {
-      for (const blog of relatedBlogs) {
-        if (!existing.blogs.some((b) => b.id === blog.id)) {
-          existing.blogs.push(blog);
-        }
-      }
-      for (const edition of editions) {
-        if (!existing.editionsFound.some((e) => e.link === edition.link)) {
-          existing.editionsFound.push(edition);
-        }
-      }
-    } else {
-      booksByCanonicalKey.set(canonicalKey, {
-        ...book,
-        blogs: relatedBlogs,
-        editionsFound: editions,
-      });
-    }
-  }
-
-  const finalBooks = Array.from(booksByCanonicalKey.values());
-  const blogsInReport = new Map<string, { id: string; title: string; url: string }>();
-  for (const book of finalBooks) {
-    for (const blog of book.blogs) {
-      if (!blogsInReport.has(blog.id)) {
-        blogsInReport.set(blog.id, blog);
-      }
-    }
-  }
-
-  return {
-    generatedAt: new Date().toISOString(),
-    count: finalBooks.length,
-    blogs: Array.from(blogsInReport.values()).sort((a, b) => a.title.localeCompare(b.title)),
-    books: finalBooks,
-  };
-}
-
 // ── Main ──
 
 async function main(): Promise<void> {
@@ -327,7 +119,8 @@ async function main(): Promise<void> {
   const allErrors: PipelineError[] = [];
 
   try {
-    const service = new GoodreadsService(browserClient);
+    const goodreadsService = new GoodreadsService(browserClient);
+    const pipelineService = new PipelineService(goodreadsService, dbService);
 
     if (!checkOnly) {
       console.log(`\n${c.heading("=== Phase 1: Scraping blogs ===")}`);
@@ -335,15 +128,13 @@ async function main(): Promise<void> {
 
     for (const [i, blogId] of blogIds.entries()) {
       console.log(c.gray(`\n[${i + 1}/${blogIds.length}]`));
-      const { errors } = await scrapeBlog(
-        service,
-        blogId,
+      const { errors } = await pipelineService.processBlog(blogId, {
         language,
         formats,
         sort,
         checkOnly,
         force,
-      );
+      });
       for (const err of errors) {
         allErrors.push({ blogId, ...err });
       }
@@ -354,13 +145,13 @@ async function main(): Promise<void> {
       return;
     }
 
-    service.printTelemetry();
+    goodreadsService.printTelemetry();
 
     if (!enableReport) {
       console.log(`\n${c.gray("Final report generation is disabled (use --report to enable)")}`);
     } else {
       console.log(`\n${c.heading("=== Phase 2: Generating combined report ===")}`);
-      const report = generateReport(dbService, blogIds, language);
+      const report = pipelineService.generateReport(blogIds, language);
 
       const { mkdirSync } = await import("node:fs");
       const path = await import("node:path");
