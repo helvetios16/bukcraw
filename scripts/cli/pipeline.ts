@@ -120,7 +120,12 @@ async function main(): Promise<void> {
 
   try {
     const goodreadsService = new GoodreadsService(browserClient);
-    const pipelineService = new PipelineService(goodreadsService, dbService);
+    const pipelineService = new PipelineService(
+      goodreadsService.blog,
+      goodreadsService.book,
+      goodreadsService.edition,
+      dbService,
+    );
 
     if (!checkOnly) {
       console.log(`\n${c.heading("=== Phase 1: Scraping blogs ===")}`);

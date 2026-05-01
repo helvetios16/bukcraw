@@ -2,7 +2,9 @@ import type { DatabaseService } from "../core/database";
 import type { Book, BookFilterOptions, Edition } from "../types";
 import { ansi } from "../utils/logger";
 import { Progress } from "../utils/progress";
-import type { GoodreadsService } from "./goodreads-service";
+import type { BlogService } from "./blog-service";
+import type { BookService } from "./book-service";
+import type { EditionService } from "./edition-service";
 
 const c = ansi;
 
@@ -40,7 +42,9 @@ export interface FinalReportOutput {
 
 export class PipelineService {
   constructor(
-    private readonly service: GoodreadsService,
+    private readonly blogService: BlogService,
+    private readonly bookService: BookService,
+    private readonly editionService: EditionService,
     private readonly dbService: DatabaseService,
   ) {}
 
@@ -50,7 +54,7 @@ export class PipelineService {
   public async processBlog(blogId: string, options: PipelineOptions): Promise<PipelineResult> {
     const { language, formats, sort, checkOnly = false, force = false } = options;
 
-    const blogData = await this.service.scrapeBlog(blogId);
+    const blogData = await this.blogService.scrapeBlog(blogId);
     if (!blogData) {
       return {
         books: [],
@@ -71,13 +75,13 @@ export class PipelineService {
       progress.tick(bookRef.title || bookRef.id);
 
       try {
-        const bookDetails = await this.service.scrapeBook(bookRef.id);
+        const bookDetails = await this.bookService.scrapeBook(bookRef.id);
         if (!bookDetails) {
           throw new Error(`Failed to get details for book ${bookRef.id}`);
         }
 
         if (bookDetails.legacyId) {
-          const filters = await this.service.scrapeEditionsFilters(bookDetails.legacyId);
+          const filters = await this.editionService.scrapeEditionsFilters(bookDetails.legacyId);
 
           if (filters && !force) {
             const hasLanguage = filters.language.some((l) => l.value === language);
@@ -113,7 +117,7 @@ export class PipelineService {
                 sort,
                 format,
               };
-              await this.service.scrapeFilteredEditions(bookDetails.legacyId, filterOptions);
+              await this.editionService.scrapeFilteredEditions(bookDetails.legacyId, filterOptions);
             }
           }
         }
